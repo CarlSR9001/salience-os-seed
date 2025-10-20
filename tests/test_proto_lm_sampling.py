@@ -59,3 +59,24 @@ def test_sampling_does_not_mutate_vocab_or_optimizer_state():
     assert model.vocab.size() == initial_vocab_size
     optimizer_state_after = _snapshot_optimizer_state(model.optimizer)
     assert _optimizer_states_equal(optimizer_state_before, optimizer_state_after)
+
+
+def test_readonly_encoding_substitutes_unknown_characters():
+    config = TrainingConfig(
+        sequence_length=8,
+        embed_dim=16,
+        vocab_growth_chunk=16,
+        vocab_growth_headroom=0,
+    )
+    model = ProtoLanguageModel(config=config, learning_enabled=False)
+
+    vocab_size_before = model.vocab.size()
+    fallback_id = model.vocab.token_to_id["?"]
+
+    encoded = model.encode("🙂", mutate=False)
+    assert encoded == [fallback_id]
+
+    mixed_text = "Hi🙂!"
+    encoded_mixed = model.encode(mixed_text, mutate=False)
+    assert model.vocab.size() == vocab_size_before
+    assert model.vocab.decode_ids(encoded_mixed) == mixed_text.replace("🙂", "?")
