@@ -173,10 +173,18 @@ class ProtoLanguageModel:
                 observer(snapshot)
             except Exception:
                 continue
+        parameter_total = self.embed.num_embeddings * self.embed.embed_dim
+        grad_norm = min(snapshot["grad_health"].get("grad_norm", 0.0), 1.0)
         BUS.publish(
             TelemetryEvent(
-                type="proto_lm/training_step",
-                payload={"step": self.step, "chars": len(clean)},
+                type="training/step",
+                payload={
+                    "step": self.step,
+                    "loss": loss,
+                    "parameter_total": parameter_total,
+                    "chars": len(clean),
+                    "grads": [("embed", grad_norm)],
+                },
             )
         )
         return loss
