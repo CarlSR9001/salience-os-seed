@@ -1,0 +1,2 @@
+{"scenario_id": "GRIND_1", "context": "Alice is taller than Bob. Bob is taller than Carol.", "question": "Who is the tallest?", "choices": {"A": "Alice", "B": "Bob", "C": "Carol"}, "answer": "A"}
+{"scenario_id": "GRIND_2", "context": "The capital of Japan is Tokyo.", "question": "Which city is the capital of Japan?", "expected_regex": "tokyo"}

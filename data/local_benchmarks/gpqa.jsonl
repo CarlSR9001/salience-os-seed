@@ -1,0 +1,3 @@
+{"question_id": "GPQA_Q1", "question": "Which gas is most abundant in the Earth's atmosphere?", "choices": {"A": "Oxygen", "B": "Nitrogen", "C": "Carbon Dioxide", "D": "Argon"}, "answer": "B"}
+{"question_id": "GPQA_Q2", "question": "In complex analysis, what is the derivative of e^{iz} with respect to z?", "choices": {"A": "ie^{iz}", "B": "-ie^{iz}", "C": "e^{iz}", "D": "-e^{iz}"}, "answer": "A"}
+{"question_id": "GPQA_Q3", "question": "The group of rotational symmetries of a square is isomorphic to which group?", "choices": {"A": "C_4", "B": "D_4", "C": "S_3", "D": "A_4"}, "answer": "B"}
