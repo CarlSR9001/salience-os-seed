@@ -17,6 +17,7 @@ Key behaviours implemented:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import logging
 from typing import Dict, Iterable, Mapping, MutableMapping, Optional, Sequence, Tuple
 
 import numpy as np
@@ -55,6 +56,8 @@ class ControllerState:
 class SalienceControllerPolicy:
     """Implements the salience-aware action selection routine."""
 
+    _LOGGER = logging.getLogger(__name__)
+
     def __init__(
         self,
         config: ControllerConfig,
@@ -88,6 +91,7 @@ class SalienceControllerPolicy:
         """Compute scores for all actions and return the best candidate."""
 
         cfg = self.config
+        previous_cooldown = self.state.cooldown_remaining
         scores: Dict[ControllerAction, float] = {}
         details: Dict[ControllerAction, Tuple[float, str]] = {}
         for action in self.actions:
@@ -115,6 +119,13 @@ class SalienceControllerPolicy:
             cooldown_steps=cooldown,
             hysteresis_delta=hysteresis_delta,
         )
+        self._log_decision_trace(
+            salience,
+            decision,
+            scores,
+            details,
+            previous_cooldown=previous_cooldown,
+        )
         self.reset_auction_bids()
         return decision
 
@@ -136,6 +147,60 @@ class SalienceControllerPolicy:
         final_score = s_prime_score * budget_factor
         rationale = f"S'={s_prime_score:.3f} budget={budget_factor:.3f} | {s_prime_rationale}"
         return final_score, rationale
+
+    @staticmethod
+    def _action_summary(action: ControllerAction) -> Mapping[str, object]:
+        return {
+            "operator": action.operator.name,
+            "cot_depth": action.cot_depth,
+            "patch": action.patch.name,
+        }
+
+    def _log_decision_trace(
+        self,
+        salience: Mapping[str, float],
+        decision: ControllerDecision,
+        scores: Mapping[ControllerAction, float],
+        details: Mapping[ControllerAction, Tuple[float, str]],
+        *,
+        previous_cooldown: int,
+    ) -> None:
+        if not self._LOGGER.isEnabledFor(logging.INFO):
+            return
+        bid_winners = sorted(
+            ((self._action_key(action), float(bid)) for action, bid in self._auction_bids.items()),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+        top_bids = [
+            {"action": action_key, "score": bid}
+            for action_key, bid in bid_winners[:5]
+        ]
+        score_trace = {
+            self._action_key(action): {
+                "score": float(scores.get(action, 0.0)),
+                "rationale": rationale,
+            }
+            for action, (_, rationale) in details.items()
+        }
+        payload = {
+            "salience": {name: float(value) for name, value in salience.items()},
+            "decision": {
+                "action": self._action_summary(decision.action),
+                "score": float(decision.score),
+                "hysteresis_delta": float(decision.hysteresis_delta),
+            },
+            "cooldown": {
+                "previous": int(previous_cooldown),
+                "next": int(decision.cooldown_steps),
+            },
+            "auction_bids": top_bids,
+            "score_trace": score_trace,
+        }
+        self._LOGGER.info(
+            "controller.select_action",
+            extra={"controller_decision": payload},
+        )
 
     def _bandit_score(self, action: ControllerAction) -> float:
         action_key = self._action_key(action)
