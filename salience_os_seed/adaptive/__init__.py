@@ -1,5 +1,6 @@
 """Adaptive subsystems for the Salience OS seed runtime."""
 
+from .coordinator import AdaptiveCoordinator, GatingSummary
 from .vault import AdaptiveVault, VaultStats, WeightProvenance, WeightSnapshot
 from .gradient_flow import AdaptiveGradientFlow, FlowEstimate, FlowSignal
 from .weight_learner import AdaptiveWeightLearner, SalienceWeights
@@ -8,6 +9,8 @@ from .elegance import EleganceJudge, EleganceCandidate, EleganceConfig, Elegance
 from .axioms import AxiomGuard, AxiomSet, Axiom, AxiomViolation
 
 __all__ = [
+    "AdaptiveCoordinator",
+    "GatingSummary",
     "AdaptiveVault",
     "VaultStats",
     "WeightProvenance",
