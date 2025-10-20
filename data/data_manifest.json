@@ -1,0 +1,46 @@
+{
+    "pretraining_mix": {
+        "description": "Streaming blend for 1-3B salience pretraining warm-start.",
+        "total_tokens_estimate": 20000000000,
+        "sources": [
+            {
+                "name": "FineWeb-Edu",
+                "dataset_id": "HuggingFaceFW/fineweb-edu",
+                "config": "sample-10BT",
+                "ratio": 0.6,
+                "license": "CC-BY-SA-4.0 (per dataset card)",
+                "streaming": true,
+                "notes": "High-quality educational web subset; ~10B tokens sample."
+            },
+            {
+                "name": "Dolma",
+                "dataset_id": "allenai/dolma",
+                "config": "v1_6-sample",
+                "ratio": 0.3,
+                "license": "ODC-BY",
+                "streaming": true,
+                "notes": "~10B token sample mixing web, wiki, books, code."
+            },
+            {
+                "name": "OpenWebText",
+                "dataset_id": "Skylion007/openwebtext",
+                "ratio": 0.05,
+                "license": "MIT",
+                "streaming": true,
+                "notes": "Reddit-linked open web crawl recreation."
+            },
+            {
+                "name": "RedPajama-Data-1T-Sample",
+                "dataset_id": "togethercomputer/RedPajama-Data-1T-Sample",
+                "ratio": 0.05,
+                "license": "Together Computer TOU",
+                "streaming": true,
+                "notes": "Mixed-domain slice to diversify distribution."
+            }
+        ]
+    },
+    "instruction_finetune": {
+        "notes": "Select license-clean instruction corpus (e.g., OpenHermes-2.5, Open-Orca-Slim). Verify licensing before inclusion.",
+        "status": "pending"
+    }
+}

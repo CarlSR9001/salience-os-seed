@@ -1,0 +1,2 @@
+This is a sample document for telemetry ingestion.
+It contains a few sentences to demonstrate chunking and training.

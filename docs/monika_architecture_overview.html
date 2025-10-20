@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MONIKA / Meta-Orchestrated Novelty &amp; Invariant Kernel Architecture</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #1e3a8a 0%, #7c3aed 50%, #ec4899 100%);
+            color: #1f2937;
+            line-height: 1.6;
+            padding: 2rem 1rem;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 24px;
+            box-shadow: 0 25px 80px rgba(0,0,0,0.4);
+            overflow: hidden;
+            animation: containerFadeIn 0.8s ease-out;
+        }
+        
+        @keyframes containerFadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .hero {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 4rem 2rem;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(
+                45deg,
+                transparent 30%,
+                rgba(255, 255, 255, 0.1) 50%,
+                transparent 70%
+            );
+            animation: shimmer 6s infinite;
+        }
+        
+        @keyframes shimmer {
+            0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
+            100% { transform: translateX(100%) translateY(100%) rotate(45deg); }
+        }
+        
+        .hero h1 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            margin-bottom: 1rem;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .hero .subtitle {
+            font-size: 1.1rem;
+            opacity: 0.95;
+            font-weight: 300;
+            max-width: 700px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .content {
+            padding: 3rem 2rem;
+        }
+        
+        .section {
+            margin-bottom: 3rem;
+            animation: sectionFadeIn 0.6s ease-out backwards;
+        }
+        
+        .section:nth-child(1) { animation-delay: 0.1s; }
+        .section:nth-child(2) { animation-delay: 0.2s; }
+        .section:nth-child(3) { animation-delay: 0.3s; }
+        .section:nth-child(4) { animation-delay: 0.4s; }
+        .section:nth-child(5) { animation-delay: 0.5s; }
+        .section:nth-child(6) { animation-delay: 0.6s; }
+        .section:nth-child(7) { animation-delay: 0.7s; }
+        
+        @keyframes sectionFadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .section-title {
+            font-size: 1.8rem;
+            color: #667eea;
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 3px solid #667eea;
+        }
+        
+        .intro-text {
+            font-size: 1.05rem;
+            color: #475569;
+            line-height: 1.8;
+            margin-bottom: 2rem;
+        }
+        
+        .problem-box {
+            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+            border-left: 4px solid #f59e0b;
+            padding: 2rem;
+            border-radius: 12px;
+            margin: 2rem 0;
+        }
+        
+        .problem-box h3 {
+            color: #92400e;
+            font-size: 1.4rem;
+            margin-bottom: 1rem;
+        }
+        
+        .problem-box p {
+            color: #78350f;
+            font-size: 1.05rem;
+            line-height: 1.7;
+        }
+        
+        .equation-box {
+            background: #1e293b;
+            color: white;
+            padding: 2rem;
+            border-radius: 16px;
+            margin: 2rem 0;
+        }
+        
+        .equation {
+            font-size: 1.4rem;
+            text-align: center;
+            font-family: 'Georgia', serif;
+            margin: 1.5rem 0;
+        }
+        
+        .equation-vars {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1rem;
+            margin-top: 1.5rem;
+            font-size: 0.9rem;
+        }
+        
+        .var-item {
+            color: #cbd5e1;
+        }
+        
+        .var-symbol {
+            color: #fbbf24;
+            font-weight: 700;
+            margin-right: 0.5rem;
+        }
+        
+        .code-block {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 1.5rem;
+            border-radius: 12px;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 0.85rem;
+            overflow-x: auto;
+            margin: 1.5rem 0;
+        }
+        
+        .code-comment {
+            color: #64748b;
+        }
+        
+        .code-keyword {
+            color: #c678dd;
+        }
+        
+        .component-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+        
+        .component-card {
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 1.5rem;
+            transition: all 0.3s ease;
+        }
+        
+        .component-card:hover {
+            border-color: #667eea;
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.15);
+            transform: translateY(-2px);
+        }
+        
+        .component-card h4 {
+            color: #667eea;
+            margin-bottom: 0.75rem;
+            font-size: 1.1rem;
+        }
+        
+        .component-card p {
+            color: #64748b;
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+        
+        .file-ref {
+            font-family: 'Monaco', monospace;
+            font-size: 0.8rem;
+            color: #7c3aed;
+            background: #f3f4f6;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            margin-top: 0.5rem;
+            display: inline-block;
+        }
+        
+        .comparison-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin: 2rem 0;
+        }
+        
+        .comparison-card {
+            background: #f8fafc;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 1.5rem;
+        }
+        
+        .comparison-card h3 {
+            color: #1e293b;
+            margin-bottom: 1rem;
+            font-size: 1.2rem;
+        }
+        
+        .comparison-card ul {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .comparison-card li {
+            padding: 0.5rem 0;
+            color: #475569;
+            padding-left: 1.5rem;
+            position: relative;
+            font-size: 0.95rem;
+        }
+        
+        .comparison-card li::before {
+            content: "•";
+            position: absolute;
+            left: 0;
+            color: #667eea;
+            font-weight: bold;
+        }
+        
+        .status-box {
+            background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+            border-left: 4px solid #3b82f6;
+            padding: 1.5rem;
+            border-radius: 12px;
+            margin: 2rem 0;
+        }
+        
+        .status-box h4 {
+            color: #1e40af;
+            margin-bottom: 0.75rem;
+            font-size: 1.1rem;
+        }
+        
+        .status-box p {
+            color: #1e3a8a;
+            font-size: 0.95rem;
+            line-height: 1.7;
+        }
+        
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .status-icon {
+            font-size: 1.2rem;
+        }
+        
+        .limitations-box {
+            background: #f8fafc;
+            border: 2px solid #cbd5e1;
+            border-radius: 12px;
+            padding: 2rem;
+            margin: 2rem 0;
+        }
+        
+        .limitations-box h4 {
+            color: #475569;
+            margin-bottom: 1rem;
+        }
+        
+        .limitation-item {
+            display: flex;
+            gap: 1rem;
+            margin: 1rem 0;
+            padding: 1rem;
+            background: white;
+            border-radius: 8px;
+        }
+        
+        .limitation-label {
+            font-weight: 600;
+            color: #667eea;
+            min-width: 100px;
+        }
+        
+        .limitation-text {
+            color: #475569;
+            font-size: 0.95rem;
+        }
+
+        .try-it-box {
+            background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+            border-left: 4px solid #10b981;
+            padding: 2rem;
+            border-radius: 12px;
+            margin: 2rem 0;
+        }
+        
+        .try-it-box h4 {
+            color: #065f46;
+            margin-bottom: 1rem;
+            font-size: 1.2rem;
+        }
+
+        /* SVG Animations */
+        .pulse-box {
+            animation: pulse 3s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        
+        .glow {
+            filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.6));
+            animation: glow-pulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes glow-pulse {
+            0%, 100% { filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.6)); }
+            50% { filter: drop-shadow(0 0 15px rgba(245, 158, 11, 0.9)); }
+        }
+        
+        .hover-lift {
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .hover-lift:hover {
+            transform: translateY(-3px);
+            filter: brightness(1.1);
+        }
+        
+        .flow-line {
+            stroke-dasharray: 1000;
+            stroke-dashoffset: 1000;
+            animation: draw 3s ease-in-out forwards, flow 3s ease-in-out infinite 3s;
+        }
+        
+        @keyframes draw {
+            to { stroke-dashoffset: 0; }
+        }
+        
+        @keyframes flow {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .feedback-line {
+            animation: feedback-flow 2s ease-in-out infinite;
+        }
+        
+        @keyframes feedback-flow {
+            0%, 100% { stroke-dashoffset: 0; }
+            50% { stroke-dashoffset: -20; }
+        }
+        
+        .operator-group {
+            animation: fadeInUp 0.6s ease-out forwards;
+            opacity: 0;
+        }
+        
+        .operator-group:nth-child(1) { animation-delay: 0.1s; }
+        .operator-group:nth-child(2) { animation-delay: 0.2s; }
+        .operator-group:nth-child(3) { animation-delay: 0.3s; }
+        .operator-group:nth-child(4) { animation-delay: 0.4s; }
+        .operator-group:nth-child(5) { animation-delay: 0.5s; }
+        
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .data-particle {
+            filter: drop-shadow(0 0 6px rgba(251, 191, 36, 0.8));
+            animation: particle-glow 1.5s ease-in-out infinite;
+        }
+        
+        @keyframes particle-glow {
+            0%, 100% { 
+                filter: drop-shadow(0 0 6px rgba(251, 191, 36, 0.8));
+            }
+            50% { 
+                filter: drop-shadow(0 0 12px rgba(251, 191, 36, 1));
+            }
+        }
+
+        @media (max-width: 768px) {
+            .comparison-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .hero h1 {
+                font-size: 2rem;
+            }
+            
+            .equation {
+                font-size: 1.1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="hero">
+            <h1>MONIKA / Meta-Orchestrated Novelty &amp; Invariant Kernel Architecture</h1>
+            <p class="subtitle">Exploring salience-driven compute allocation in language model architectures</p>
+        </div>
+        
+        <div class="content">
+            <!-- Introduction -->
+            <div class="section">
+                <p class="intro-text">
+                    MONIKA (Meta-Orchestrated Novelty &amp; Invariant Kernel Architecture) is the codename for the SalienceOS Seed runtime implemented in this repository. It wires together `SalienceRuntime` (`runtime/orchestrator.py`), the salience sensor stack (`core/sensors/`), controller policy (`core/controller/policy.py`), state-space backbone (`core/operators/sass.py`), and adaptive memory/tooling subsystems to study salience-governed compute. Instead of running a fixed stack of blocks, the runtime measures state on every step, scores actions with the S′ controller, and only executes the operators that are expected to deliver value.
+                </p>
+                
+                <div class="problem-box">
+                    <h3>Motivation</h3>
+                    <p>Standard transformer architectures execute the same operations regardless of input complexity—every token attends to every other token at every layer. This works well but treats trivial and complex inputs identically. We're exploring whether explicitly modeling computational value (salience) and selecting operators accordingly offers benefits for efficiency or capability.</p>
+                </div>
+            </div>
+            
+            <!-- Approach -->
+            <div class="section">
+                <h2 class="section-title">Core Mechanism</h2>
+                
+                <p class="intro-text">
+                    On each step MONIKA derives an eight-channel salience vector (uncertainty, novelty, alignment, progress, cost, drag, truth, coherence). `SalienceControllerPolicy` blends S′ scores (`core/controller/s_prime.py`) with compute-auction bids and bandit priors before handing a decision to `SalienceRuntime`. The event-driven scheduler (`core/scheduler/`) enforces cooldowns and budget limits, while the runtime conditionally runs SASS, verification, reflection, memory verbs, or tool hooks.
+                </p>
+                
+                <div class="equation-box">
+                    <div class="equation">
+                        S' = (w₁·ΔA + w₂·R + w₃·M) × C × e<sup>-λt</sup> × (1 - kφ)
+                    </div>
+                    <div class="equation-vars">
+                        <div class="var-item"><span class="var-symbol">ΔA</span> Novelty</div>
+                        <div class="var-item"><span class="var-symbol">R</span> Retention</div>
+                        <div class="var-item"><span class="var-symbol">M</span> Payoff</div>
+                        <div class="var-item"><span class="var-symbol">C</span> Continuity</div>
+                        <div class="var-item"><span class="var-symbol">φ</span> Fatigue</div>
+                        <div class="var-item"><span class="var-symbol">w₁,w₂,w₃</span> Learned weights</div>
+                    </div>
+                </div>
+                
+                <div class="code-block">
+<span class="code-comment"># Simplified runtime loop</span>
+<span class="code-keyword">def</span> run_step(state):
+    <span class="code-comment"># Measure current state</span>
+    salience = sensor_bank.tick(state, memory, meta)
+    
+    <span class="code-comment"># Score all possible actions</span>
+    decision = controller.choose(salience, meta, budget)
+    
+    <span class="code-comment"># Execute chosen operator</span>
+    <span class="code-keyword">if</span> decision.operator == SASS:
+        output = sass_core.forward(hidden_states)
+    <span class="code-keyword">elif</span> decision.operator == VERIFY:
+        result = verifier.run(state)
+    <span class="code-keyword">elif</span> decision.operator == REFLECT:
+        reflection_step(decision, state)
+    
+    <span class="code-comment"># Update weights based on outcome</span>
+    bandit_trainer.update(decision.action, reward)
+                </div>
+            </div>
+            
+            <!-- Components -->
+            <div class="section">
+                <h2 class="section-title">Implementation Components</h2>
+                
+                <div class="component-grid">
+                    <div class="component-card">
+                        <h4>Sensor Bank</h4>
+                        <p>Eight MAD-normalised sensors emit the canonical salience vector (uncertainty, novelty, alignment, progress, cost, drag, truth, coherence) using `MedianMADNormalizer` and dedicated sensor classes.</p>
+                        <span class="file-ref">core/sensors/bank.py</span>
+                    </div>
+                    
+                    <div class="component-card">
+                        <h4>Controller Policy</h4>
+                        <p>`SalienceControllerPolicy` applies S′ scoring (`core/controller/s_prime.py`), compute auction bids, hysteresis, cooldowns, and a bandit prior store to pick the next operator/patch/depth tuple.</p>
+                        <span class="file-ref">core/controller/policy.py</span>
+                    </div>
+                    
+                    <div class="component-card">
+                        <h4>SASSCore</h4>
+                        <p>Stacked state-space blocks with gated convolutions, RoPE rotation, and optional hyper-adapter deltas provide linear-time token processing when selected.</p>
+                        <span class="file-ref">core/operators/sass.py</span>
+                    </div>
+                    
+                    <div class="component-card">
+                        <h4>Runtime Orchestrator</h4>
+                        <p>`SalienceRuntime` stitches together sensors, controller, scheduler, compute auction, verifier, memory operator, graph reasoner, and teleporter while tracking budgets, salience histories, and metrics.</p>
+                        <span class="file-ref">runtime/orchestrator.py</span>
+                    </div>
+                    
+                    <div class="component-card">
+                        <h4>Sparse Teleporter</h4>
+                        <p>`SparseJumpTeleporter` keeps a per-sequence KV cache and injects residuals on salience-triggered hops, approximating selective long-range recall without full attention cost.</p>
+                        <span class="file-ref">core/operators/sparse_jump.py</span>
+                    </div>
+                    
+                    <div class="component-card">
+                        <h4>ProtoLanguageModel</h4>
+                        <p>Lightweight autoregressive learner sharing SASSCore, featuring dynamic vocabulary growth, age-weighted loss, module plug-ins, EMA parameters, and evaluation helpers.</p>
+                        <span class="file-ref">proto_lm/trainer.py</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Status -->
+            <div class="section">
+                <h2 class="section-title">Implementation Status</h2>
+                
+                <div class="status-box">
+                    <h4>What's Implemented</h4>
+                    <div class="status-grid">
+                        <div class="status-item">
+                            <span class="status-icon">✓</span>
+                            <span>Salience sensor bank</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-icon">✓</span>
+                            <span>S' scoring function</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-icon">✓</span>
+                            <span>Bandit controller</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-icon">✓</span>
+                            <span>Runtime orchestrator</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-icon">✓</span>
+                            <span>State-space core</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-icon">✓</span>
+                            <span>Structured memory</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-icon">✓</span>
+                            <span>Adaptive coordination</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-icon">✓</span>
+                            <span>TinyStories evaluation</span>
+                        </div>
+                    </div>
+                    <p style="margin-top: 1rem;">The core runtime loop is functional. `eval.tinystories.py` measures perplexity and accuracy on TinyStories splits, and the telemetry bus (`telemetry.py`) streams parameter updates, runtime metrics, and ingestion events.</p>
+                </div>
+                
+                <div class="status-box" style="background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); border-color: #10b981;">
+                    <h4 style="color: #065f46;">Validation &amp; Tooling</h4>
+                    <p style="color: #064e3b;">Integration tests and CLI tooling exercise the runtime, adaptive coordinator, and evaluation harness:</p>
+                    
+                    <div class="code-block" style="margin-top: 1rem; font-size: 0.8rem;">
+<span class="code-comment"># Eval TinyStories checkpoint</span>
+python eval.tinystories.py --checkpoint storage/proto_lm/tinystories.pt
+
+<span class="code-comment"># Runtime dashboard (event-driven scheduler + telemetry)</span>
+python -m salience_os_seed.runtime.ui.cli --generator spiky
+
+<span class="code-comment"># Integration tests (runtime, adaptive coordinator, conversation)</span>
+pytest tests/test_adaptive_integration.py tests/test_controller.py tests/test_conversation.py -q
+                    </div>
+                    
+                    <p style="color: #064e3b; margin-top: 1rem;">These scripts exercise the same modules used in production runs—covering controller hysteresis, adaptive gating, structured memory persistence, and TinyStories evaluation pipelines.</p>
+                </div>
+                
+                <div class="try-it-box">
+                    <h4>Running the System</h4>
+                    <div class="code-block" style="margin-top: 1rem;">
+<span class="code-comment"># Run conversational interface</span>
+python -m salience_os_seed.conversation.cli
+
+<span class="code-comment"># Evaluate checkpoint</span>
+python eval.tinystories.py --checkpoint storage/proto_lm/model.pt
+
+<span class="code-comment"># Launch dashboard UI</span>
+python -m salience_os_seed.runtime.ui.cli --generator baseline
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Comparison -->
+            <div class="section">
+                <h2 class="section-title">Architectural Comparison</h2>
+                
+                <div class="comparison-grid">
+                    <div class="comparison-card">
+                        <h3>Standard Transformers</h3>
+                        <ul>
+                            <li>Fixed layer stack executes on every input</li>
+                            <li>O(n²) attention always computed</li>
+                            <li>Single operation: multi-head attention</li>
+                            <li>No explicit resource allocation</li>
+                            <li>Weights frozen after training</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="comparison-card">
+                        <h3>MONIKA Architecture</h3>
+                        <ul>
+                            <li>Dynamic routing based on salience invariant</li>
+                            <li>Can skip expensive ops if low-value</li>
+                            <li>Multiple operators: process, verify, reflect</li>
+                            <li>Explicit salience measurement</li>
+                            <li>Online bandit learning</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <p class="intro-text">
+                    The key difference: transformers execute uniformly, whereas MONIKA measures first then decides. Whether that measurement overhead is worth the potential allocation savings is an empirical question we're investigating.
+                </p>
+            </div>
+            
+            <!-- Limitations -->
+            <div class="section">
+                <h2 class="section-title">Limitations &amp; Open Questions</h2>
+                
+                <div class="limitations-box">
+                    <h4>Known Tradeoffs</h4>
+                    
+                    <div class="limitation-item">
+                        <div class="limitation-label">Complexity</div>
+                        <div class="limitation-text">More components than standard architectures—harder to debug, tune, and maintain</div>
+                    </div>
+                    
+                    <div class="limitation-item">
+                        <div class="limitation-label">Overhead</div>
+                        <div class="limitation-text">Sensor evaluation and scoring add per-step cost; only beneficial if allocation savings exceed measurement cost</div>
+                    </div>
+                    
+                    <div class="limitation-item">
+                        <div class="limitation-label">Scale</div>
+                        <div class="limitation-text">Currently tested on small models (TinyStories scale); behavior at larger scale unknown</div>
+                    </div>
+                    
+                    <div class="limitation-item">
+                        <div class="limitation-label">Benchmarking</div>
+                        <div class="limitation-text">Need comprehensive comparisons against baseline transformers across diverse tasks</div>
+                    </div>
+                    
+                    <div class="limitation-item">
+                        <div class="limitation-label">Learning</div>
+                        <div class="limitation-text">Bandit learning may be slower to converge than end-to-end gradient descent in some scenarios</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Design Philosophy -->
+            <div class="section">
+                <h2 class="section-title">Approach</h2>
+                
+                <p class="intro-text">
+                    MONIKA explores whether treating compute allocation as an explicit optimization problem (via salience measurement) offers advantages over implicit allocation (via attention). The S' equation—the salience invariant—is one instantiation of this idea, representing a kernel of adaptive resource management.
+                </p>
+                
+                <p class="intro-text">
+                    The implementation prioritizes:
+                </p>
+                
+                <ul style="color: #475569; font-size: 1.05rem; line-height: 2; margin-left: 2rem;">
+                    <li><strong>Modularity:</strong> Each component (sensors, controller, operators) is independently testable</li>
+                    <li><strong>Measurability:</strong> Telemetry exposes salience values, decisions, and outcomes for analysis</li>
+                    <li><strong>Adaptability:</strong> Bandit learning allows runtime adjustment without full retraining</li>
+                    <li><strong>Transparency:</strong> Decisions are interpretable through salience scores and controller logs</li>
+                </ul>
+                
+                <p class="intro-text" style="margin-top: 2rem;">
+                    Whether MONIKA offers practical advantages over well-optimized transformers remains an open empirical question. The goal is to demonstrate feasibility and gather data on where salience-driven allocation helps or hurts.
+                </p>
+            </div>
+            
+            <!-- Visual Architecture -->
+            <div class="section">
+                <h2 class="section-title">System Architecture Diagram</h2>
+                
+                <div style="background: linear-gradient(135deg, #1e293b 0%, #334155 100%); padding: 3rem 2rem; border-radius: 20px; margin: 2rem 0;">
+                    <svg viewBox="0 0 800 1000" style="width: 100%; max-width: 800px; margin: 0 auto; display: block;">
+                        <!-- Input -->
+                        <rect x="325" y="20" width="150" height="60" rx="8" fill="#fbbf24" class="pulse-box"/>
+                        <text x="400" y="55" text-anchor="middle" fill="#1e293b" font-size="16" font-weight="bold">INPUT</text>
+                        
+                        <!-- Arrow to sensors -->
+                        <path d="M 400 80 L 400 120" stroke="#94a3b8" stroke-width="3" fill="none" marker-end="url(#arrowhead)" class="flow-line"/>
+                        
+                        <!-- Sensor Bank -->
+                        <rect x="250" y="120" width="300" height="100" rx="8" fill="#667eea" class="hover-lift"/>
+                        <text x="400" y="145" text-anchor="middle" fill="white" font-size="18" font-weight="bold">Sensor Bank</text>
+                        <text x="400" y="170" text-anchor="middle" fill="#e0e7ff" font-size="12">8 sensors measure state</text>
+                        <text x="260" y="195" fill="#e0e7ff" font-size="11">• Uncertainty • Novelty • Progress</text>
+                        <text x="260" y="210" fill="#e0e7ff" font-size="11">• Truth • Drag • Cost • Coherence</text>
+                        
+                        <!-- Arrow to S' -->
+                        <path d="M 400 220 L 400 260" stroke="#94a3b8" stroke-width="3" fill="none" marker-end="url(#arrowhead)" class="flow-line"/>
+                        
+                        <!-- S' Engine -->
+                        <rect x="250" y="260" width="300" height="80" rx="8" fill="#f59e0b" class="hover-lift glow"/>
+                        <text x="400" y="285" text-anchor="middle" fill="#1e293b" font-size="18" font-weight="bold">S' Scoring Engine</text>
+                        <text x="400" y="310" text-anchor="middle" fill="#78350f" font-size="14">w₁·ΔA + w₂·R + w₃·M × C × (1-kφ)</text>
+                        <text x="400" y="330" text-anchor="middle" fill="#78350f" font-size="11">Computes salience for all actions</text>
+                        
+                        <!-- Arrow to controller -->
+                        <path d="M 400 340 L 400 380" stroke="#94a3b8" stroke-width="3" fill="none" marker-end="url(#arrowhead)" class="flow-line"/>
+                        
+                        <!-- Controller -->
+                        <rect x="250" y="380" width="300" height="80" rx="8" fill="#7c3aed" class="hover-lift"/>
+                        <text x="400" y="405" text-anchor="middle" fill="white" font-size="18" font-weight="bold">Controller Policy</text>
+                        <text x="400" y="430" text-anchor="middle" fill="#ddd6fe" font-size="12">Bandit learning + hysteresis</text>
+                        <text x="400" y="450" text-anchor="middle" fill="#ddd6fe" font-size="11">Chooses highest-value operator</text>
+                        
+                        <!-- Split to operators -->
+                        <path d="M 400 460 L 400 490 M 400 490 L 200 520 M 400 490 L 400 520 M 400 490 L 600 520" stroke="#94a3b8" stroke-width="3" fill="none" class="flow-line"/>
+                        
+                        <!-- Operators -->
+                        <g class="operator-group">
+                            <rect x="50" y="520" width="120" height="70" rx="8" fill="#10b981" class="hover-lift"/>
+                            <text x="110" y="545" text-anchor="middle" fill="white" font-size="14" font-weight="bold">SASS</text>
+                            <text x="110" y="565" text-anchor="middle" fill="#d1fae5" font-size="10">State-space</text>
+                            <text x="110" y="580" text-anchor="middle" fill="#d1fae5" font-size="10">processing</text>
+                        </g>
+                        
+                        <g class="operator-group">
+                            <rect x="190" y="520" width="120" height="70" rx="8" fill="#10b981" class="hover-lift"/>
+                            <text x="250" y="545" text-anchor="middle" fill="white" font-size="14" font-weight="bold">VERIFY</text>
+                            <text x="250" y="565" text-anchor="middle" fill="#d1fae5" font-size="10">Check</text>
+                            <text x="250" y="580" text-anchor="middle" fill="#d1fae5" font-size="10">correctness</text>
+                        </g>
+                        
+                        <g class="operator-group">
+                            <rect x="330" y="520" width="120" height="70" rx="8" fill="#10b981" class="hover-lift"/>
+                            <text x="390" y="545" text-anchor="middle" fill="white" font-size="14" font-weight="bold">REFLECT</text>
+                            <text x="390" y="565" text-anchor="middle" fill="#d1fae5" font-size="10">Introspect</text>
+                            <text x="390" y="580" text-anchor="middle" fill="#d1fae5" font-size="10">patterns</text>
+                        </g>
+                        
+                        <g class="operator-group">
+                            <rect x="470" y="520" width="120" height="70" rx="8" fill="#10b981" class="hover-lift"/>
+                            <text x="530" y="545" text-anchor="middle" fill="white" font-size="14" font-weight="bold">MEMORY</text>
+                            <text x="530" y="565" text-anchor="middle" fill="#d1fae5" font-size="10">Query/update</text>
+                            <text x="530" y="580" text-anchor="middle" fill="#d1fae5" font-size="10">structures</text>
+                        </g>
+                        
+                        <g class="operator-group">
+                            <rect x="610" y="520" width="120" height="70" rx="8" fill="#10b981" class="hover-lift"/>
+                            <text x="670" y="545" text-anchor="middle" fill="white" font-size="14" font-weight="bold">TOOLS</text>
+                            <text x="670" y="565" text-anchor="middle" fill="#d1fae5" font-size="10">External</text>
+                            <text x="670" y="580" text-anchor="middle" fill="#d1fae5" font-size="10">resources</text>
+                        </g>
+                        
+                        <!-- Converge to output -->
+                        <path d="M 110 590 L 200 640 M 250 590 L 300 640 M 390 590 L 400 640 M 530 590 L 500 640 M 670 590 L 600 640 M 200 640 L 400 670 M 300 640 L 400 670 M 500 640 L 400 670 M 600 640 L 400 670" stroke="#94a3b8" stroke-width="2" fill="none" class="flow-line"/>
+                        
+                        <!-- Execution result -->
+                        <rect x="250" y="670" width="300" height="60" rx="8" fill="#ec4899" class="hover-lift"/>
+                        <text x="400" y="695" text-anchor="middle" fill="white" font-size="16" font-weight="bold">Execute &amp; Observe</text>
+                        <text x="400" y="715" text-anchor="middle" fill="#fce7f3" font-size="11">Record outcome, compute reward</text>
+                        
+                        <!-- Split to adaptive and output -->
+                        <path d="M 400 730 L 400 760 M 400 760 L 250 790 M 400 760 L 550 790" stroke="#94a3b8" stroke-width="3" fill="none" class="flow-line"/>
+                        
+                        <!-- Adaptive system -->
+                        <rect x="50" y="790" width="240" height="80" rx="8" fill="#6366f1" class="hover-lift"/>
+                        <text x="170" y="815" text-anchor="middle" fill="white" font-size="16" font-weight="bold">Adaptive Learning</text>
+                        <text x="170" y="835" text-anchor="middle" fill="#e0e7ff" font-size="11">Update bandit weights</text>
+                        <text x="170" y="850" text-anchor="middle" fill="#e0e7ff" font-size="11">Adjust truth guards</text>
+                        <text x="170" y="865" text-anchor="middle" fill="#e0e7ff" font-size="11">Tune elegance thresholds</text>
+                        
+                        <!-- Feedback loop -->
+                        <path d="M 170 790 L 170 750 L 180 750" stroke="#fbbf24" stroke-width="2" fill="none" marker-end="url(#arrowhead-yellow)" stroke-dasharray="5,5" class="feedback-line"/>
+                        
+                        <!-- Output -->
+                        <rect x="430" y="790" width="240" height="80" rx="8" fill="#14b8a6" class="pulse-box"/>
+                        <text x="550" y="815" text-anchor="middle" fill="white" font-size="18" font-weight="bold">OUTPUT</text>
+                        <text x="550" y="840" text-anchor="middle" fill="#ccfbf1" font-size="12">Response + Metrics</text>
+                        <text x="550" y="860" text-anchor="middle" fill="#ccfbf1" font-size="11">Gated by truth/elegance</text>
+                        
+                        <!-- Side annotations -->
+                        <text x="50" y="30" fill="#94a3b8" font-size="12" font-style="italic">Raw text or</text>
+                        <text x="50" y="45" fill="#94a3b8" font-size="12" font-style="italic">conversation</text>
+                        
+                        <text x="650" y="300" fill="#fbbf24" font-size="13" font-weight="bold">Core Innovation:</text>
+                        <text x="650" y="320" fill="#cbd5e1" font-size="11">Compute WHAT to</text>
+                        <text x="650" y="335" fill="#cbd5e1" font-size="11">compute based on</text>
+                        <text x="650" y="350" fill="#cbd5e1" font-size="11">expected value</text>
+                        
+                        <!-- Arrow markers -->
+                        <defs>
+                            <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+                                <polygon points="0 0, 10 3, 0 6" fill="#94a3b8"/>
+                            </marker>
+                            <marker id="arrowhead-yellow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+                                <polygon points="0 0, 10 3, 0 6" fill="#fbbf24"/>
+                            </marker>
+                        </defs>
+                        
+                        <!-- Animated data particle -->
+                        <circle r="6" fill="#fbbf24" class="data-particle">
+                            <animateMotion dur="10s" repeatCount="indefinite" path="M 400,80 L 400,220 L 400,340 L 400,460 L 400,520 L 400,590 L 400,670 L 400,730 L 550,790"/>
+                        </circle>
+                    </svg>
+                </div>
+                
+                <div style="text-align: center; margin: 2rem 0;">
+                    <div style="display: inline-block; text-align: left; background: #f8fafc; padding: 1.5rem 2rem; border-radius: 12px; border: 2px solid #e2e8f0;">
+                        <p style="color: #475569; margin-bottom: 0.5rem;"><strong style="color: #667eea;">Legend:</strong></p>
+                        <p style="color: #64748b; font-size: 0.9rem; margin: 0.25rem 0;">🟡 Yellow pulse = Data in motion</p>
+                        <p style="color: #64748b; font-size: 0.9rem; margin: 0.25rem 0;">🟣 Purple = Decision &amp; control</p>
+                        <p style="color: #64748b; font-size: 0.9rem; margin: 0.25rem 0;">🟢 Green = Execution operators</p>
+                        <p style="color: #64748b; font-size: 0.9rem; margin: 0.25rem 0;">🔵 Blue = Adaptive learning</p>
+                        <p style="color: #64748b; font-size: 0.9rem; margin: 0.25rem 0;">- - - Dashed = Feedback loop</p>
+                    </div>
+                </div>
+                
+                <p style="text-align: center; color: #64748b; margin-top: 2rem; font-size: 0.95rem;">
+                    <strong style="color: #1e293b;">Interactive Flow:</strong> Watch the glowing particle travel through MONIKA. Data flows top-to-bottom through measurement → scoring → selection → execution → learning. The yellow feedback loop shows how adaptive learning continuously improves future decisions. Hover over components to see them respond!
+                </p>
+            </div>
+            
+            <!-- Footer note -->
+            <div class="section" style="padding-top: 2rem; border-top: 2px solid #e2e8f0;">
+                <p style="color: #64748b; font-size: 0.95rem; text-align: center;">
+                    This is an experimental research system. Code, documentation, and evaluation scripts are available for review. Feedback and empirical comparisons welcome.
+                </p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
