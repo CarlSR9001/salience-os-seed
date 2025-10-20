@@ -42,3 +42,20 @@ def test_training_step_preserves_gradients_across_invocations():
 
     assert hidden.grad is not None
     assert torch.any(hidden.grad != 0)
+
+
+def test_inference_step_without_flag_detaches_hidden_state():
+    runtime = SalienceRuntime()
+    runtime.set_training_active(True)
+
+    training_hidden = torch.randn(1, 3, runtime.config.sass.d_model, requires_grad=True)
+    decision = _make_sass_decision()
+
+    runtime._execute_action(decision, {"hidden_states": training_hidden, "training_active": True}, {})
+
+    inference_hidden = torch.randn(1, 3, runtime.config.sass.d_model, requires_grad=True)
+    runtime._execute_action(decision, {"hidden_states": inference_hidden}, {})
+
+    assert runtime.training_active is False
+    assert runtime.hidden_states is not None
+    assert runtime.hidden_states.requires_grad is False
