@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 
 from salience_os_seed.ingestion.run import ingest_directory, main
 

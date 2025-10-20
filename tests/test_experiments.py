@@ -2,8 +2,6 @@ import ast
 import importlib.util
 from pathlib import Path
 
-import pytest
-
 
 def _load_experiments_module():
     module_path = Path(__file__).resolve().parents[1] / "salience_os_seed" / "core" / "ideas" / "experiments.py"

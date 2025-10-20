@@ -10,7 +10,7 @@ fetch without paying the cost every step.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, Iterable, List, Mapping, Optional
+from typing import Dict, List
 
 import torch
 import torch.nn as nn

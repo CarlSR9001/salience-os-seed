@@ -10,7 +10,7 @@ import threading
 import time
 from pathlib import Path
 from statistics import fmean
-from typing import Iterable, Mapping, Optional
+from typing import Mapping, Optional
 
 from ..conversation.session import ConversationConfig, ConversationSession, IngestionConfig
 from ..proto_lm.trainer import TrainingConfig

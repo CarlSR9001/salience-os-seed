@@ -7,7 +7,7 @@ from typing import Dict, Iterable, Mapping, MutableMapping, Tuple
 
 import math
 
-from .actions import ControllerAction, ControllerOperator, ControllerPatch
+from .actions import ControllerAction, ControllerOperator
 
 
 @dataclass

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Callable, Deque, Dict, Iterable, Mapping, MutableMapping, Optional
+from typing import Callable, Deque, Iterable, Mapping, MutableMapping
 
 from .config import RuntimeConfig
 from .orchestrator import RuntimeMetrics, SalienceRuntime

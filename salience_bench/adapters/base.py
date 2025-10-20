@@ -8,7 +8,7 @@ from importlib import import_module
 from pathlib import Path
 from typing import Mapping, Protocol, Sequence
 
-from ..core import AggregateReport, BenchmarkAdapter, MetricSummary, ModelConfig, SimpleAggregateAdapter
+from ..core import AggregateReport, MetricSummary, ModelConfig, SimpleAggregateAdapter
 
 logger = logging.getLogger(__name__)
 

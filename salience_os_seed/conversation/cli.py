@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from pathlib import Path
 
 from ..telemetry import BUS, ParameterEvent, TelemetryEvent, render_parameter_event, render_training_event
 from .filters import IngestionThresholds
@@ -167,7 +166,7 @@ def main() -> None:
             break
         if user_input.lower() in {"exit", "quit"}:
             break
-        metrics = session.process_user_input(user_input)
+        session.process_user_input(user_input)
         snapshot = session.generate_response()
         if not args.quiet:
             print(f"[meta] {snapshot.meta_report}")

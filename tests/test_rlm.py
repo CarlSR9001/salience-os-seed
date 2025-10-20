@@ -11,7 +11,7 @@ from salience_os_seed.runtime.orchestrator import SalienceRuntime
 from salience_os_seed.rlm.model_client import ModelClient
 from salience_os_seed.rlm.orchestrator import RLM
 from salience_os_seed.rlm.policy import RLMPolicy
-from salience_os_seed.rlm.types import LLMResponse, Prompt, PromptMessage, ToolInvocation
+from salience_os_seed.rlm.types import LLMResponse, Prompt, ToolInvocation
 
 
 class DummyModel(ModelClient):

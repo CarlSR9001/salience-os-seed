@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
-
-import math
+from dataclasses import dataclass
+from typing import Iterable, List, Mapping, Optional, Sequence, Tuple
 
 
 @dataclass

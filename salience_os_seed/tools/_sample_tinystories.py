@@ -1,8 +1,6 @@
 """Sample text from the TinyStories checkpoint after loading it."""
 from pathlib import Path
 
-import torch
-
 from salience_os_seed.conversation.session import (
     ConversationConfig,
     ConversationSession,

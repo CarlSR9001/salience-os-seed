@@ -8,9 +8,9 @@ ensures updates remain transactional (no partial mutations when an action fails)
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, Mapping, MutableMapping, Sequence
+from typing import Mapping, Sequence
 
-from ..memory import MemoryRecord, MemoryTable, StructuredMemory
+from ..memory import MemoryRecord, StructuredMemory
 
 
 @dataclass

@@ -12,8 +12,9 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
-from ...conversation.session import ConversationSession, ConversationConfig, ConversationSnapshot
+from ...conversation.session import ConversationConfig, ConversationSession, ConversationSnapshot
 from ...proto_lm.trainer import TrainingConfig
+from ...runtime.orchestrator import RuntimeMetrics
 from ...training.cot_curriculum.loader import iter_examples
 from ...telemetry import (
     BUS,
@@ -987,7 +988,6 @@ class DashboardHandler(BaseHTTPRequestHandler):
         payload = self.rfile.read(length)
 
         segments_total = 0
-        latest_metrics: Optional[ConversationSnapshot] = None
         files_processed: List[str] = []
         allow_duplicates = False
         buffered_files: List[Tuple[str, str]] = []

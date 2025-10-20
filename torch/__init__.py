@@ -283,11 +283,14 @@ def _sum_nested(data: Any) -> float:
 
 def _combine_nested(left: Any, right: Any, op: Callable[[float, float], Any]) -> Any:
     if isinstance(left, list) and isinstance(right, list):
-        return [_combine_nested(l, r, op) for l, r in zip(left, right)]
+        return [
+            _combine_nested(left_item, right_item, op)
+            for left_item, right_item in zip(left, right)
+        ]
     if isinstance(left, list):
-        return [_combine_nested(l, right, op) for l in left]
+        return [_combine_nested(left_item, right, op) for left_item in left]
     if isinstance(right, list):
-        return [_combine_nested(left, r, op) for r in right]
+        return [_combine_nested(left, right_item, op) for right_item in right]
     return op(float(left), float(right))
 
 
@@ -323,7 +326,8 @@ def _as_list(value: Any) -> Any:
 def _allclose(left: Any, right: Any, *, rtol: float, atol: float) -> bool:
     if isinstance(left, list) and isinstance(right, list):
         return len(left) == len(right) and all(
-            _allclose(l, r, rtol=rtol, atol=atol) for l, r in zip(left, right)
+            _allclose(left_item, right_item, rtol=rtol, atol=atol)
+            for left_item, right_item in zip(left, right)
         )
     if isinstance(left, list) or isinstance(right, list):
         return False
