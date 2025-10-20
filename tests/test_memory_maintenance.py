@@ -4,8 +4,8 @@ from pathlib import Path
 import pytest
 
 from salience_os_seed.core.memory import StructuredMemory
-from salience_os_seed.core.memory import maintenance as maintenance_mod
 from salience_os_seed.core.memory.maintenance import (
+    ArchiveStore,
     MaintenanceThresholds,
     archive_low_roi_facts,
     merge_redundant_entries,
@@ -23,15 +23,14 @@ def test_should_cleanup_triggers_on_table_size():
     assert should_cleanup({"drag": 0.1}, memory, thresholds)
 
 
-def test_archive_low_roi_facts_writes_and_prunes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_archive_low_roi_facts_writes_and_prunes(tmp_path: Path):
     memory = StructuredMemory()
     memory.facts.add("retain", metadata={"roi": 0.5})
     memory.facts.add("archive", metadata={"roi": 0.05})
     archive_root = tmp_path / "archive"
-    archive_root.mkdir()
-    monkeypatch.setattr(maintenance_mod, "ARCHIVE_ROOT", archive_root)
+    store = ArchiveStore(root=archive_root)
 
-    archived = archive_low_roi_facts(memory, threshold=0.1)
+    archived = archive_low_roi_facts(memory, threshold=0.1, store=store)
 
     assert archived == 1
     assert memory.facts.count() == 1

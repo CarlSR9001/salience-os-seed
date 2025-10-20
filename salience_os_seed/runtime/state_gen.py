@@ -163,8 +163,9 @@ class DraggyGenerator(StateGenerator):
         self._active_tool = "retrieval" if self._active_tool == "math" else "math"
 
 
-GENERATOR_REGISTRY: Dict[str, StateGenerator] = {
-    "baseline": BaselineGenerator(),
-    "spiky": SpikyGenerator(),
-    "draggy": DraggyGenerator(),
-}
+def create_default_generators() -> Dict[str, StateGenerator]:
+    return {
+        "baseline": BaselineGenerator(),
+        "spiky": SpikyGenerator(),
+        "draggy": DraggyGenerator(),
+    }

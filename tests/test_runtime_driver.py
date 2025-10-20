@@ -3,7 +3,7 @@ import math
 import pytest
 
 from salience_os_seed.runtime.driver import RuntimeDriver
-from salience_os_seed.runtime.state_gen import BaselineGenerator, GENERATOR_REGISTRY
+from salience_os_seed.runtime.state_gen import BaselineGenerator, create_default_generators
 
 
 def test_baseline_generator_reset_restarts_counter():
@@ -35,9 +35,9 @@ def test_driver_step_records_history_and_memory():
     assert len(snapshot2.last_metrics) == 2
 
 
-def test_driver_switches_generators(monkeypatch):
+def test_driver_switches_generators():
     driver = RuntimeDriver()
-    keys = list(GENERATOR_REGISTRY.keys())
+    keys = list(create_default_generators().keys())
     assert len(keys) >= 1
     driver.set_generator(keys[0])
     snapshot = driver.step()

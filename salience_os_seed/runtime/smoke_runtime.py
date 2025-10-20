@@ -6,7 +6,8 @@ import json
 from pathlib import Path
 from typing import Optional
 
-from .orchestrator import RuntimeConfig, SalienceRuntime
+from .config import RuntimeConfig
+from .orchestrator import SalienceRuntime
 
 
 DEFAULT_STATE = {
