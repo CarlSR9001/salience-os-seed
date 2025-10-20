@@ -9,7 +9,7 @@ similarity and optionally smooth the output to reduce jitter.
 from __future__ import annotations
 
 from collections import deque
-from typing import Deque, Mapping, MutableMapping, Sequence
+from typing import Deque, Mapping, MutableMapping, Sequence, Tuple
 
 import numpy as np
 
@@ -34,6 +34,9 @@ class AlignmentSensor(Sensor):
             raise ValueError("smoothing_window must be >= 4 for alignment sensor")
         self._window = smoothing_window
         self._buffer: Deque[float] = deque(maxlen=smoothing_window)
+        self._cached_goal: Tuple[Tuple[float, ...], np.ndarray | None] | None = None
+        self._cached_projector_sig: Tuple[int, int, float] | None = None
+        self._last_distance_source: str = "direct"
 
     def _measure(
         self,
@@ -45,7 +48,30 @@ class AlignmentSensor(Sensor):
         goal_vec = _extract_vector(memory, ("goal", "embedding"))
         if prompt_vec is None or goal_vec is None:
             return 0.0
-        similarity = _cosine_similarity(prompt_vec, goal_vec)
+        projector = _extract_projection(meta)
+        projector_sig = _projector_signature(projector)
+
+        projected_prompt = _project_vector(prompt_vec, projector)
+
+        goal_key = _vector_fingerprint(goal_vec, projector_sig)
+        if (
+            self._cached_goal is None
+            or self._cached_goal[0] != goal_key
+            or self._cached_projector_sig != projector_sig
+        ):
+            projected_goal = _project_vector(goal_vec, projector)
+            goal_unit = _unit_vector(projected_goal)
+            self._cached_goal = (goal_key, goal_unit)
+            self._cached_projector_sig = projector_sig
+            self._last_distance_source = "recomputed"
+        else:
+            goal_unit = self._cached_goal[1]
+            self._last_distance_source = "cached"
+
+        prompt_unit = _unit_vector(projected_prompt)
+        if prompt_unit is None or goal_unit is None:
+            return 0.0
+        similarity = float(np.dot(prompt_unit, goal_unit))
         # rescale from [-1, 1] to [0, 1]
         scaled = 0.5 * (similarity + 1.0)
         self._buffer.append(scaled)
@@ -63,11 +89,16 @@ class AlignmentSensor(Sensor):
     ) -> MutableMapping[str, float]:
         buffer_min = float(min(self._buffer)) if self._buffer else raw_value
         buffer_max = float(max(self._buffer)) if self._buffer else raw_value
+        projection_dim = 0
+        if self._cached_projector_sig is not None:
+            projection_dim = self._cached_projector_sig[0]
         return {
             "raw_alignment": raw_value,
             "window_min": buffer_min,
             "window_max": buffer_max,
             "normalised": norm_value,
+            "projection_dim": float(projection_dim),
+            "goal_cache": 1.0 if self._last_distance_source == "cached" else 0.0,
         }
 
 
@@ -83,10 +114,43 @@ def _extract_vector(source: Mapping[str, object], path: Sequence[str]) -> np.nda
     if arr.ndim != 1:
         return None
     return arr
+def _extract_projection(meta: Mapping[str, object]) -> np.ndarray | None:
+    candidate = meta.get("salience_projection") or meta.get("alignment_projection")
+    if candidate is None:
+        return None
+    if isinstance(candidate, Mapping):
+        candidate = candidate.get("matrix")
+    arr = np.asarray(candidate, dtype=np.float64)
+    if arr.ndim != 2:
+        return None
+    return arr
 
 
-def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
-    denom = np.linalg.norm(a) * np.linalg.norm(b)
-    if denom < 1e-9:
-        return 0.0
-    return float(np.dot(a, b) / denom)
+def _project_vector(vector: np.ndarray, projector: np.ndarray | None) -> np.ndarray:
+    if projector is None:
+        return vector
+    return projector @ vector
+
+
+def _unit_vector(vector: np.ndarray | None) -> np.ndarray | None:
+    if vector is None:
+        return None
+    norm = np.linalg.norm(vector)
+    if norm < 1e-9:
+        return None
+    return vector / norm
+
+
+def _projector_signature(projector: np.ndarray | None) -> Tuple[int, int, float] | None:
+    if projector is None:
+        return None
+    return (int(projector.shape[0]), int(projector.shape[1]), float(projector.sum()))
+
+
+def _vector_fingerprint(vector: np.ndarray, projector_sig: Tuple[int, int, float] | None) -> Tuple[float, ...]:
+    mean = float(np.mean(vector))
+    std = float(np.std(vector))
+    var = std * std
+    length = float(vector.shape[0])
+    projector_hash = 0.0 if projector_sig is None else float(sum(projector_sig))
+    return (length, mean, var, projector_hash)
