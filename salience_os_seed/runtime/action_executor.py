@@ -7,7 +7,13 @@ from typing import Mapping, MutableMapping, Optional
 
 import torch
 
-from ..core.controller import BanditTrainer, ControllerAction, ControllerDecision, ControllerOperator
+from ..core.controller import (
+    BanditTrainer,
+    ControllerAction,
+    ControllerDecision,
+    ControllerOperator,
+    ControllerPatch,
+)
 from ..core.memory import StructuredMemory
 from ..core.operators import GraphReasoner, MemoryOperator, SparseJumpTeleporter, VerifierSuite, SASSCore
 from ..core.reflection import IntrospectionInterface
@@ -204,28 +210,77 @@ class ActionExecutor:
 class ToolInvocationAdapter:
     """Adapter allowing tool invocation via direct call or MCP."""
 
-    def __init__(self, runtime_tools: MutableMapping[str, object] | None = None) -> None:
+    def __init__(
+        self,
+        runtime_tools: MutableMapping[str, object] | None = None,
+        operator_tool_map: Mapping[ControllerOperator, object] | None = None,
+    ) -> None:
         self.runtime_tools = runtime_tools or {}
+        self.operator_tool_map = dict(operator_tool_map or {})
         self.mcp_session: "MCPToolSession | None" = None
 
     def register_mcp_session(self, session: "MCPToolSession") -> None:
         self.mcp_session = session
 
     def invoke(self, action: ControllerAction, state: Mapping[str, object]) -> bool:
-        tool_name = state.get("tool_name") or action.patch.name.lower()
+        candidate = self._resolve_candidate(action, state)
+        if callable(candidate):
+            candidate(state)
+            return True
+        if not candidate:
+            return False
+
+        tool_name = candidate
         tools = state.get("tools")
         if isinstance(tools, Mapping):
             tool_fn = tools.get(tool_name)
             if callable(tool_fn):
                 tool_fn(state)
                 return True
-        if self.mcp_session:
-            return self.mcp_session.invoke(tool_name, state)
+        if self.mcp_session and self.mcp_session.invoke(tool_name, state):
+            return True
         runtime_fn = self.runtime_tools.get(tool_name)
         if callable(runtime_fn):
             runtime_fn(state)
             return True
         return False
+
+    def _resolve_candidate(
+        self, action: ControllerAction, state: Mapping[str, object]
+    ) -> object | None:
+        explicit = state.get("tool_name")
+        if isinstance(explicit, str) and explicit:
+            return explicit
+
+        mapped = self.operator_tool_map.get(action.operator)
+        resolved = self._resolve_mapped_tool(mapped, action)
+        if resolved:
+            return resolved
+
+        if action.patch is ControllerPatch.NONE:
+            return None
+
+        fallback = action.patch.name.lower()
+        if self._tool_exists(fallback, state):
+            return fallback
+        return None
+
+    def _resolve_mapped_tool(self, mapped: object | None, action: ControllerAction) -> object | None:
+        if mapped is None:
+            return None
+        if isinstance(mapped, Mapping):
+            patch_tool = mapped.get(action.patch)
+            if patch_tool:
+                return patch_tool
+            return mapped.get(ControllerPatch.NONE)
+        return mapped
+
+    def _tool_exists(self, tool_name: str, state: Mapping[str, object]) -> bool:
+        tools = state.get("tools")
+        if isinstance(tools, Mapping) and callable(tools.get(tool_name)):
+            return True
+        runtime_fn = self.runtime_tools.get(tool_name)
+        return callable(runtime_fn)
 
 
 class MCPToolSession:
