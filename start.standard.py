@@ -1,9 +1,9 @@
-"""Launch TinyStories multi-epoch training with preset defaults.
+"""Launch synthetic baseline multi-epoch training with preset defaults.
 
-Run this script (``python start.standard.py``) to stream the TinyStories
-corpus through the proto language model overnight. It wraps
+Run this script (``python start.standard.py``) to stream the synthetic
+baseline corpus through the proto language model. It wraps
 ``salience_os_seed.training.run_corpus`` with configuration tuned for the
-``standard/TinyStories-*.txt`` data prepared earlier.
+compact synthetic data prepared in ``data/local_benchmarks``.
 """
 
 from __future__ import annotations
@@ -21,8 +21,8 @@ def resolve_path(path: Path) -> Path:
 
 
 def main() -> None:
-    corpus_path = resolve_path(Path("standard/TinyStories-train.txt"))
-    checkpoint_path = resolve_path(Path("storage/proto_lm/tinystories.pt"))
+    corpus_path = resolve_path(Path("data/local_benchmarks/synthetic_baseline_corpus.txt"))
+    checkpoint_path = resolve_path(Path("storage/proto_lm/synthetic_baseline.pt"))
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
 
     if not corpus_path.exists():

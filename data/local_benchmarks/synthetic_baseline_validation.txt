@@ -1,0 +1,5 @@
+<|system|>Assistant speaks concise English.<|user|>What is 6 plus 2?<|assistant|>6 plus 2 equals 8.
+<|system|>Assistant speaks concise English.<|user|>Provide a short greeting.<|assistant|>Hello! How can I help today?
+<|system|>Assistant speaks concise English.<|user|>TOOL request: calculator 4 * 3<|assistant|>[tool:calculator request="4 * 3"]
+<|system|>Calculator reports: 12<|user|>Summarize the result.<|assistant|>The calculator returned 12.
+<|system|>Assistant speaks concise English.<|user|>What is 9 minus 5?<|assistant|>9 minus 5 equals 4.

@@ -622,10 +622,10 @@
                         </div>
                         <div class="status-item">
                             <span class="status-icon">✓</span>
-                            <span>TinyStories evaluation</span>
+                            <span>Synthetic baseline evaluation</span>
                         </div>
                     </div>
-                    <p style="margin-top: 1rem;">The core runtime loop is functional. `eval.tinystories.py` measures perplexity and accuracy on TinyStories splits, and the telemetry bus (`telemetry.py`) streams parameter updates, runtime metrics, and ingestion events.</p>
+                    <p style="margin-top: 1rem;">The core runtime loop is functional. `eval.synthetic_baseline.py` measures lightweight metrics on the compact synthetic splits, and the telemetry bus (`telemetry.py`) streams parameter updates, runtime metrics, and ingestion events.</p>
                 </div>
                 
                 <div class="status-box" style="background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); border-color: #10b981;">
@@ -633,8 +633,8 @@
                     <p style="color: #064e3b;">Integration tests and CLI tooling exercise the runtime, adaptive coordinator, and evaluation harness:</p>
                     
                     <div class="code-block" style="margin-top: 1rem; font-size: 0.8rem;">
-<span class="code-comment"># Eval TinyStories checkpoint</span>
-python eval.tinystories.py --checkpoint storage/proto_lm/tinystories.pt
+<span class="code-comment"># Eval synthetic baseline checkpoint</span>
+python eval.synthetic_baseline.py --checkpoint storage/proto_lm/synthetic_baseline.pt
 
 <span class="code-comment"># Runtime dashboard (event-driven scheduler + telemetry)</span>
 python -m salience_os_seed.runtime.ui.cli --generator spiky
@@ -643,7 +643,7 @@ python -m salience_os_seed.runtime.ui.cli --generator spiky
 pytest tests/test_adaptive_integration.py tests/test_controller.py tests/test_conversation.py -q
                     </div>
                     
-                    <p style="color: #064e3b; margin-top: 1rem;">These scripts exercise the same modules used in production runs—covering controller hysteresis, adaptive gating, structured memory persistence, and TinyStories evaluation pipelines.</p>
+                    <p style="color: #064e3b; margin-top: 1rem;">These scripts exercise the same modules used in production runs—covering controller hysteresis, adaptive gating, structured memory persistence, and the synthetic evaluation pipeline.</p>
                 </div>
                 
                 <div class="try-it-box">
@@ -653,7 +653,7 @@ pytest tests/test_adaptive_integration.py tests/test_controller.py tests/test_co
 python -m salience_os_seed.conversation.cli
 
 <span class="code-comment"># Evaluate checkpoint</span>
-python eval.tinystories.py --checkpoint storage/proto_lm/model.pt
+python eval.synthetic_baseline.py --checkpoint storage/proto_lm/synthetic_baseline.pt
 
 <span class="code-comment"># Launch dashboard UI</span>
 python -m salience_os_seed.runtime.ui.cli --generator baseline
@@ -713,7 +713,7 @@ python -m salience_os_seed.runtime.ui.cli --generator baseline
                     
                     <div class="limitation-item">
                         <div class="limitation-label">Scale</div>
-                        <div class="limitation-text">Currently tested on small models (TinyStories scale); behavior at larger scale unknown</div>
+                        <div class="limitation-text">Currently tested on small models (synthetic baseline scale); behavior at larger scale unknown</div>
                     </div>
                     
                     <div class="limitation-item">

@@ -260,7 +260,7 @@ def main() -> None:
     parser.add_argument("--chunk-size", type=int, default=2048)
     parser.add_argument("--shuffle-buffer", type=int, default=0)
     parser.add_argument("--log-every", type=int, default=100)
-    parser.add_argument("--checkpoint", type=Path, default=Path("storage/proto_lm/tinystories.pt"))
+    parser.add_argument("--checkpoint", type=Path, default=Path("storage/proto_lm/synthetic_baseline.pt"))
     parser.add_argument("--checkpoint-interval", type=int, default=10000)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--device", default="auto")

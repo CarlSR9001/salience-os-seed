@@ -1,0 +1,64 @@
+# Synthetic conversational snippets for baseline Salience OS Seed training.
+# Each block is intentionally short to minimize dataset size while covering greetings,
+# simple math, tool usage, and follow-up reasoning patterns.
+
+<|system|>You are a helpful synthetic assistant that speaks concise English.<|user|>Hello there!<|assistant|>Hi! How can I help you today?
+
+<|system|>You are a helpful synthetic assistant that speaks concise English.<|user|>What's 3 plus 4?<|assistant|>3 plus 4 equals 7.
+
+<|system|>You are a helpful synthetic assistant that speaks concise English.<|user|>Please add 8 and 9.<|assistant|>8 plus 9 equals 17.
+
+<|system|>You are a helpful synthetic assistant that speaks concise English.<|user|>I need to multiply 5 by 6.<|assistant|>5 multiplied by 6 equals 30.
+
+<|system|>You are a helpful synthetic assistant that speaks concise English.<|user|>Summarize: The sun rises, people wake, coffee brews.<|assistant|>Summary: Morning starts as the sun rises, people wake up, and coffee brews.
+
+<|system|>You are a helpful synthetic assistant that speaks concise English.<|user|>Remind me to stretch every hour.<|assistant|>Sure! I will remind you to stretch every hour.
+
+<|system|>You are a helpful synthetic assistant that speaks concise English.<|user|>Convert 12 minutes to seconds.<|assistant|>Twelve minutes equals 720 seconds.
+
+<|system|>You are a helpful synthetic assistant that speaks concise English.<|user|>Which number is larger, 42 or 24?<|assistant|>42 is larger than 24.
+
+<|system|>You are a helpful synthetic assistant that speaks concise English.<|user|>Find the average of 4, 6, and 10.<|assistant|>The average of 4, 6, and 10 is 20 divided by 3, which is approximately 6.67.
+
+<|system|>You are a helpful synthetic assistant that speaks concise English.<|user|>If I double 7 what do I get?<|assistant|>Doubling 7 gives 14.
+
+<|system|>You are a helpful synthetic assistant that speaks concise English.<|user|>TOOL request: calculator 9 + 5<|assistant|>[tool:calculator request="9 + 5"]
+<|system|>Calculator reports: 14<|user|>What did the tool say?<|assistant|>The calculator tool returned 14.
+
+<|system|>You are a helpful synthetic assistant that speaks concise English.<|user|>TOOL request: lookup weather for clear sky<|assistant|>[tool:weather request="clear sky"]
+<|system|>Weather tool reports: Sunny and calm<|user|>Summarize that please.<|assistant|>The weather tool says it is sunny and calm.
+
+<|system|>You are a helpful synthetic assistant that speaks concise English.<|user|>Explain what a loop is in one sentence.<|assistant|>A loop repeats a sequence of steps until a condition is met.
+
+<|system|>You are a helpful synthetic assistant that speaks concise English.<|user|>Remind me what 10 minus 6 equals.<|assistant|>10 minus 6 equals 4.
+
+<|system|>You are a helpful synthetic assistant that speaks concise English.<|user|>Count from 1 to 5 quickly.<|assistant|>1, 2, 3, 4, 5.
+
+<|system|>You are a helpful synthetic assistant that speaks concise English.<|user|>How many seconds are in 2 hours?<|assistant|>Two hours contain 7,200 seconds.
+
+<|system|>You are a helpful synthetic assistant that speaks concise English.<|user|>Give me a polite farewell.<|assistant|>Take care and have a great day!
+
+<|system|>You are a helpful synthetic assistant that speaks concise English.<|user|>If x equals 5, what is 2x?<|assistant|>If x equals 5, then 2x equals 10.
+
+<|system|>You are a helpful synthetic assistant that speaks concise English.<|user|>What is the square of 11?<|assistant|>The square of 11 is 121.
+
+<|system|>You are a helpful synthetic assistant that speaks concise English.<|user|>Create a friendly greeting for a new user.<|assistant|>Welcome! I am glad you are here—how can I assist you today?
+
+<|system|>You are a helpful synthetic assistant that speaks concise English.<|user|>Check the tool log for last action.<|assistant|>The most recent tool interaction reported sunny and calm weather.
+
+<|system|>You are a helpful synthetic assistant that speaks concise English.<|user|>Add 2.5 and 4.5.<|assistant|>2.5 plus 4.5 equals 7.0.
+
+<|system|>You are a helpful synthetic assistant that speaks concise English.<|user|>Generate a short encouraging message.<|assistant|>You are doing great—keep going and stay curious!
+
+<|system|>You are a helpful synthetic assistant that speaks concise English.<|user|>What is 15 divided by 3?<|assistant|>15 divided by 3 equals 5.
+
+<|system|>You are a helpful synthetic assistant that speaks concise English.<|user|>I asked the calculator tool about 7*8. What is the result?<|assistant|>7 times 8 equals 56.
+
+<|system|>You are a helpful synthetic assistant that speaks concise English.<|user|>Name two colors of the sky during sunset.<|assistant|>A sunset sky often shows shades of orange and pink.
+
+<|system|>You are a helpful synthetic assistant that speaks concise English.<|user|>If I subtract 9 from 20 what remains?<|assistant|>Subtracting 9 from 20 leaves 11.
+
+<|system|>You are a helpful synthetic assistant that speaks concise English.<|user|>Provide a short checklist for starting a timer tool.<|assistant|>Checklist: open the timer tool, set the duration, press start, and confirm it is running.
+
+<|system|>You are a helpful synthetic assistant that speaks concise English.<|user|>Say goodbye politely.<|assistant|>Goodbye! Let me know if you need anything else.
+
