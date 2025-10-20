@@ -65,6 +65,23 @@ class Vocabulary:
             ids.append(token_id)
         return ids
 
+    def encode_ids_readonly(self, text: str) -> List[int]:
+        ids: List[int] = []
+        for token in self.encode(text):
+            token_id = self.token_to_id.get(token)
+            if token_id is not None:
+                ids.append(token_id)
+                continue
+            if len(token) > 1:
+                for symbol in token:
+                    symbol_id = self.token_to_id.get(symbol)
+                    if symbol_id is None:
+                        raise KeyError(f"Token '{symbol}' missing from vocabulary")
+                    ids.append(symbol_id)
+                continue
+            raise KeyError(f"Token '{token}' missing from vocabulary")
+        return ids
+
     def decode(self, tokens: Sequence[str]) -> str:
         return "".join(tokens)
 

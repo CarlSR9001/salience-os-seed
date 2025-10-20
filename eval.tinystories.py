@@ -116,7 +116,7 @@ def compute_metrics(session: ConversationSession, corpus: Path, *, chunk_size: i
     correct_next = 0
     total_next = 0
     for chunk in iter_chunks(corpus, chunk_size, max_samples):
-        ids = model.encode(chunk)
+        ids = model.encode(chunk, mutate=False)
         if len(ids) < 2:
             continue
         inputs = torch.tensor(ids[:-1], device=model.device).unsqueeze(0)
