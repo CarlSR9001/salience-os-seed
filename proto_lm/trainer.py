@@ -355,7 +355,11 @@ class ProtoLanguageModel(nn.Module):
             raise ValueError("token_ids must have shape (batch, seq)")
         embedded = self.embed(token_ids)
         embedded = self.module_manager.apply_pre(embedded)
-        hidden, new_states = self.core(embedded, layer_states=layer_states)
+        hidden, new_states = self.core(
+            embedded,
+            layer_states=layer_states,
+            detach_states=not self.training,
+        )
         hidden = self.module_manager.apply_post(hidden)
         trimmed_states = [state[:, -1:, :].detach().contiguous() for state in new_states]
         logits = self.output(hidden)

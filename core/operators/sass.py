@@ -52,7 +52,13 @@ class StateSpaceBlock(nn.Module):
         self.dropout = nn.Dropout(config.dropout)
         self.register_buffer("rope_cache", None, persistent=False)
 
-    def forward(self, x: torch.Tensor, state: torch.Tensor | None = None) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(
+        self,
+        x: torch.Tensor,
+        state: torch.Tensor | None = None,
+        *,
+        detach_state: bool = False,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         # x: (batch, seq, d_model)
         residual = x
         x = self.norm(x)
@@ -72,7 +78,9 @@ class StateSpaceBlock(nn.Module):
         out = self.output_proj(new_state)
         out = self.dropout(out)
         x = residual + out
-        return x, new_state.detach()
+        if detach_state:
+            new_state = new_state.detach()
+        return x, new_state
 
 
 class SASSCore(nn.Module):
@@ -90,6 +98,8 @@ class SASSCore(nn.Module):
         hidden_states: torch.Tensor,
         layer_states: Optional[Sequence[torch.Tensor]] = None,
         hyper_deltas: Optional[Iterable[torch.Tensor]] = None,
+        *,
+        detach_states: bool = False,
     ) -> tuple[torch.Tensor, list[torch.Tensor]]:
         seq_len = hidden_states.size(1)
         cos, sin = self._get_rope_factors(seq_len, hidden_states.device, hidden_states.dtype)
@@ -102,9 +112,19 @@ class SASSCore(nn.Module):
         states_iter = list(layer_states) if layer_states is not None else [None] * len(self.layers)
         for idx, (layer, prev_state) in enumerate(zip(self.layers, states_iter)):
             if self.config.use_checkpoint and self.training:
-                hidden_states, layer_state = torch.utils.checkpoint.checkpoint(layer, hidden_states, prev_state)
+                if prev_state is None:
+                    hidden_states, layer_state = torch.utils.checkpoint.checkpoint(
+                        lambda h: layer(h, None, detach_state=detach_states),
+                        hidden_states,
+                    )
+                else:
+                    hidden_states, layer_state = torch.utils.checkpoint.checkpoint(
+                        lambda h, s: layer(h, s, detach_state=detach_states),
+                        hidden_states,
+                        prev_state,
+                    )
             else:
-                hidden_states, layer_state = layer(hidden_states, prev_state)
+                hidden_states, layer_state = layer(hidden_states, prev_state, detach_state=detach_states)
             new_states.append(layer_state)
         return hidden_states, new_states
 
