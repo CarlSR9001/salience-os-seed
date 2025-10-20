@@ -352,11 +352,14 @@ class SalienceRuntime:
                 raise TypeError("`hidden_states` must be a torch.Tensor")
             layer_states = state.get("layer_states") or self.layer_states
             hyper_deltas = state.get("hyper_deltas")
+            detach_states = state.get("detach_states")
+            if not isinstance(detach_states, bool):
+                detach_states = not self.sass.training
             output, new_layer_states = self.sass(
                 hidden_states,
                 layer_states,
                 hyper_deltas,
-                detach_states=True,
+                detach_states=detach_states,
             )
             sequence_id = int(state.get("sequence_id", 0))
             if operator is ControllerOperator.SASS_WITH_JUMP:
@@ -376,7 +379,7 @@ class SalienceRuntime:
                         entity_hints=state.get("entity_hints", ()),
                     )
             self.layer_states = new_layer_states
-            self.hidden_states = output.detach()
+            self.hidden_states = output.detach() if detach_states else output
             reward = float(salience.get("progress", 0.0)) - self.config.controller.lambda_cost * float(salience.get("cost", 0.0))
             self.bandit_trainer.update(action, reward)
             return None
