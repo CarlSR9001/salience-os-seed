@@ -6,10 +6,11 @@ import argparse
 import json
 import threading
 import time
+from collections import deque
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Deque, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
 from ...conversation.session import ConversationConfig, ConversationSession, ConversationSnapshot
@@ -47,7 +48,7 @@ def _run_cot_curriculum(session: ConversationSession, *, limit: Optional[int] = 
             source="cot_curriculum",
             max_chars=768,
         )
-        count += 1
+        count += segments_processed
         if limit is not None and count >= limit:
             break
     return {"examples": count}
@@ -101,580 +102,688 @@ def _ingest_food_corpus(session: ConversationSession) -> Dict[str, int]:
     return {"files": files, "chunks": chunks}
 
 
+_SPARKLINE_BARS = "▁▂▃▄▅▆▇█"
+
+
+def _render_sparkline(values: Deque[float], *, width: int = 32) -> str:
+    if not values:
+        return "—"
+    tail = list(values)[-width:]
+    minimum = min(tail)
+    maximum = max(tail)
+    if maximum - minimum < 1e-6:
+        return _SPARKLINE_BARS[0] * len(tail)
+    span = maximum - minimum
+    scale = len(_SPARKLINE_BARS) - 1
+    bars = []
+    for value in tail:
+        index = int((value - minimum) / span * scale)
+        index = max(0, min(scale, index))
+        bars.append(_SPARKLINE_BARS[index])
+    return "".join(bars)
+
+
+def _format_salience(salience_raw: Dict[str, float]) -> Dict[str, object]:
+    if not salience_raw:
+        return {"top": [], "raw": {}}
+    positive_total = sum(max(value, 0.0) for value in salience_raw.values()) or 1.0
+    top = sorted(salience_raw.items(), key=lambda item: item[1], reverse=True)[:8]
+    return {
+        "top": [
+            {
+                "dimension": key,
+                "value": float(value),
+                "percent": max(value, 0.0) / positive_total,
+            }
+            for key, value in top
+        ],
+        "raw": {key: float(value) for key, value in salience_raw.items()},
+    }
+
 HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang=\"en\">
 <head>
   <meta charset=\"utf-8\" />
-  <title>Salience Runtime Dashboard</title>
+  <title>Salience Runtime Observatory</title>
   <style>
-    :root { color-scheme: dark; }
+    :root {
+      color-scheme: dark;
+      font-family: 'DM Mono', 'Fira Code', 'SFMono-Regular', Consolas, monospace;
+    }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      padding: 0;
-      background: radial-gradient(circle at 20% 20%, #0c1a3a, #01020d 55%);
-      color: #f0f6ff;
-      font-family: 'Lucida Console', 'Courier New', monospace;
-      letter-spacing: 0.02em;
-      position: relative;
       min-height: 100vh;
+      background: radial-gradient(circle at 16% 20%, #10244d, #040513 70%);
+      color: #eaf8ff;
+      letter-spacing: 0.01em;
     }
     body::before {
       content: '';
       position: fixed;
       inset: 0;
-      background-image: linear-gradient(
-        rgba(255, 255, 255, 0.03) 1px,
-        transparent 1px
-      );
-      background-size: 100% 4px;
       pointer-events: none;
+      background-image:
+        radial-gradient(circle at 20% 20%, rgba(72, 255, 210, 0.07) 0, transparent 55%),
+        linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+      background-size: 640px 640px, 100% 4px;
       mix-blend-mode: screen;
       opacity: 0.6;
     }
-    header {
-      padding: 16px 24px;
-      background: linear-gradient(90deg, #051a49 0%, #0e063b 50%, #051a49 100%);
-      border-bottom: 3px solid #4effd2;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+    .app-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 24px;
+      padding: 22px 28px 18px;
+      background: linear-gradient(135deg, rgba(8, 31, 72, 0.92), rgba(15, 96, 112, 0.55));
+      border-bottom: 2px solid rgba(95, 255, 230, 0.5);
       position: sticky;
       top: 0;
-      z-index: 10;
+      z-index: 20;
+      backdrop-filter: blur(10px);
     }
-    h1 {
+    .brand h1 {
       margin: 0;
-      font-size: 1.8rem;
+      font-size: 1.6rem;
       text-transform: uppercase;
-      color: #9fffd7;
-      text-shadow: 0 0 6px rgba(79, 255, 215, 0.65);
+      color: #92ffe0;
+      letter-spacing: 0.26em;
+      text-shadow: 0 0 12px rgba(80, 255, 225, 0.7);
     }
     .meta {
-      margin-top: 10px;
-      color: #8ab4ff;
-      font-size: 0.88rem;
+      margin-top: 8px;
+      color: #9ec9ff;
+      font-size: 0.86rem;
       white-space: pre-wrap;
     }
-    main {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-      gap: 18px;
-      padding: 22px;
+    .status-pills {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
     }
-    section.panel {
-      position: relative;
-      background: rgba(5, 12, 32, 0.88);
-      border: 2px solid #3cdfff;
-      border-radius: 12px;
-      padding: 16px 18px;
-      box-shadow: 0 0 0 2px rgba(14, 255, 197, 0.12), 0 10px 22px rgba(0, 0, 0, 0.55);
+    .pill {
+      padding: 10px 16px;
+      border-radius: 999px;
+      border: 1px solid rgba(120, 255, 230, 0.4);
+      background: rgba(12, 38, 72, 0.75);
+      color: #c7f9ff;
+      min-width: 140px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 4px;
+      box-shadow: 0 0 12px rgba(30, 140, 180, 0.35);
+      text-transform: uppercase;
+      font-size: 0.64rem;
+      letter-spacing: 0.18em;
+    }
+    .pill .value {
+      font-size: 0.95rem;
+      letter-spacing: 0.08em;
+      color: #f5fffb;
+    }
+    main.grid {
+      display: grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: 20px;
+      padding: 26px;
+    }
+    .panel {
+      position: relative;
+      grid-column: span 4;
+      background: rgba(6, 20, 44, 0.88);
+      border: 1px solid rgba(96, 246, 255, 0.28);
+      border-radius: 14px;
+      padding: 18px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      box-shadow: 0 18px 45px rgba(0, 0, 0, 0.45), inset 0 0 22px rgba(40, 120, 160, 0.15);
       overflow: hidden;
     }
-    section.panel::after {
+    .panel::after {
       content: '';
       position: absolute;
       inset: 0;
-      border: 1px solid rgba(0, 255, 200, 0.15);
-      border-radius: 10px;
+      border-radius: 12px;
+      border: 1px solid rgba(95, 255, 210, 0.12);
       pointer-events: none;
     }
-    section.panel h2 {
-      margin: 0;
-      font-size: 1rem;
-      letter-spacing: 0.16em;
+    .panel-title {
       text-transform: uppercase;
-      color: #7df9ff;
+      letter-spacing: 0.22em;
+      font-size: 0.82rem;
+      color: #7fffe0;
     }
-    .mono { font-family: 'Lucida Console', 'Courier New', monospace; }
-    .scroll { overflow-y: auto; max-height: 360px; padding-right: 6px; }
+    .span-2 { grid-column: span 8; }
+    .span-3 { grid-column: span 12; }
+    .sparkline-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+    }
+    .spark-card {
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: rgba(12, 42, 84, 0.55);
+      border: 1px solid rgba(120, 255, 230, 0.2);
+    }
+    .spark-label {
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      color: #74d5ff;
+    }
+    .sparkline {
+      margin-top: 4px;
+      font-size: 1.1rem;
+      letter-spacing: 0.08em;
+      color: #e0fffe;
+      white-space: nowrap;
+    }
     .kv-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-      gap: 8px 12px;
-      font-size: 0.88rem;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 8px 14px;
     }
-    .kv-row {
+    .kv {
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: rgba(15, 40, 74, 0.55);
+      border: 1px solid rgba(120, 255, 240, 0.25);
       display: flex;
       flex-direction: column;
-      gap: 2px;
-      padding: 6px 10px;
-      background: rgba(18, 36, 78, 0.6);
-      border: 1px solid rgba(94, 255, 222, 0.25);
-      border-radius: 6px;
+      gap: 6px;
     }
-    .kv-label {
-      text-transform: uppercase;
+    .kv .label {
       font-size: 0.7rem;
-      color: #70d6ff;
-      letter-spacing: 0.1em;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #6fd9ff;
     }
-    .kv-value {
-      font-size: 0.95rem;
-      color: #f6fffc;
+    .kv .value {
+      font-size: 1rem;
+      color: #f4fffd;
     }
-    .spatial-panel {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-    #spatialCanvas {
-      width: 100%;
-      height: 220px;
-      border: 1px solid rgba(124, 255, 246, 0.4);
-      border-radius: 8px;
-      background: radial-gradient(circle at 40% 30%, rgba(40, 90, 160, 0.4), rgba(5, 10, 32, 0.9));
-      box-shadow: inset 0 0 20px rgba(30, 120, 180, 0.45);
-    }
-    #spatialAscii {
-      margin: 0;
-      padding: 10px;
-      background: rgba(4, 18, 46, 0.85);
-      border: 1px solid rgba(120, 255, 220, 0.25);
-      border-radius: 6px;
-      max-height: 160px;
-      overflow-y: auto;
-    }
-    #spatialSummary {
-      font-size: 0.78rem;
-      color: #9dfcff;
-    }
-    table {
+    .list-table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 0.85rem;
-      border: 1px solid rgba(81, 255, 218, 0.35);
+      font-size: 0.86rem;
     }
-    thead { background: rgba(43, 124, 255, 0.25); }
-    th, td { padding: 6px 6px; border-bottom: 1px solid rgba(63, 205, 255, 0.25); }
-    tr:last-child td { border-bottom: none; }
-    th { text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.12em; color: #8dd7ff; }
-    td { color: #f0f9ff; }
-    .error { color: #ff8a8a; font-size: 0.85rem; }
-    .conversation-panel { min-height: 320px; }
-    .conversation-wrapper {
-      flex: 1;
+    .list-table tr + tr { border-top: 1px solid rgba(120, 220, 255, 0.22); }
+    .list-table td {
+      padding: 6px 0;
+      vertical-align: top;
+    }
+    .list-table td:first-child {
+      width: 72px;
+      color: #7dd9ff;
+      font-size: 0.72rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+    .chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .chip {
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(120, 255, 240, 0.25);
+      background: rgba(22, 62, 110, 0.6);
+      font-size: 0.72rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #dffcff;
+    }
+    .conversation {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      max-height: 520px;
       overflow-y: auto;
       padding-right: 6px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-    #conversation {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
     }
     .bubble {
-      border-radius: 10px;
+      border-radius: 12px;
       padding: 12px 14px;
-      background: rgba(9, 41, 117, 0.55);
-      border: 1px solid rgba(124, 255, 246, 0.3);
-      margin-bottom: 8px;
-      box-shadow: inset 0 0 12px rgba(0, 255, 200, 0.08);
+      background: rgba(18, 48, 98, 0.6);
+      border: 1px solid rgba(120, 255, 240, 0.25);
+      box-shadow: inset 0 0 18px rgba(70, 170, 210, 0.25);
     }
-    .bubble.user { background: rgba(26, 64, 180, 0.45); align-self: flex-end; }
-    .bubble.assistant { background: rgba(9, 92, 73, 0.45); align-self: flex-start; }
+    .bubble.user { background: rgba(26, 94, 160, 0.6); align-self: flex-end; }
+    .bubble.assistant { background: rgba(14, 92, 82, 0.55); }
     .bubble .speaker {
-      font-weight: 600;
-      display: block;
-      margin-bottom: 6px;
-      letter-spacing: 0.08em;
+      font-size: 0.7rem;
       text-transform: uppercase;
-      color: #92fdfc;
+      letter-spacing: 0.16em;
+      color: #a7f6ff;
+      margin-bottom: 4px;
     }
     .bubble pre {
       margin: 0;
-      background: transparent;
-      padding: 0;
-      color: #f0faff;
       white-space: pre-wrap;
       word-break: break-word;
+      color: #f1faff;
     }
-    form { display: flex; flex-direction: column; gap: 10px; }
     textarea {
       resize: vertical;
       min-height: 88px;
-      border-radius: 6px;
-      border: 1px solid rgba(115, 255, 217, 0.4);
-      padding: 10px;
-      background: rgba(5, 18, 52, 0.75);
-      color: #f5feff;
-    }
-    input[type="file"] {
-      color: #92fdfc;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(110, 255, 220, 0.3);
+      background: rgba(10, 28, 58, 0.75);
+      color: #e9faff;
     }
     button {
       align-self: flex-start;
-      padding: 8px 18px;
-      border: 2px solid #5fffe2;
-      border-radius: 6px;
-      background: linear-gradient(90deg, rgba(12, 35, 96, 0.8), rgba(16, 92, 81, 0.8));
-      color: #affff7;
-      font-weight: 600;
-      cursor: pointer;
+      padding: 9px 18px;
+      border-radius: 8px;
+      border: 1px solid rgba(120, 255, 230, 0.55);
+      background: linear-gradient(120deg, rgba(16, 60, 120, 0.9), rgba(18, 112, 108, 0.9));
+      color: #a6fff1;
       text-transform: uppercase;
-      letter-spacing: 0.12em;
-      transition: transform 0.1s ease, box-shadow 0.1s ease;
-      box-shadow: 0 0 10px rgba(95, 255, 226, 0.35);
+      letter-spacing: 0.2em;
+      font-size: 0.7rem;
+      cursor: pointer;
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+      transition: transform 0.1s ease, box-shadow 0.2s ease;
     }
     button:hover { transform: translateY(-1px); }
     button:disabled { opacity: 0.55; cursor: wait; box-shadow: none; }
-    .status { font-size: 0.8rem; color: #7edaff; min-height: 1.2rem; }
-    .meter-block { display: flex; flex-direction: column; gap: 6px; }
-    .meter-label { font-size: 0.76rem; text-transform: uppercase; color: #5fceff; letter-spacing: 0.14em; }
+    .status-line {
+      font-size: 0.78rem;
+      min-height: 1.1rem;
+      color: #86d6ff;
+    }
     .meter {
       position: relative;
       height: 12px;
       width: 100%;
-      border: 1px solid rgba(98, 255, 225, 0.7);
-      border-radius: 10px;
+      border: 1px solid rgba(120, 255, 230, 0.5);
+      border-radius: 999px;
       overflow: hidden;
-      background: rgba(8, 23, 64, 0.8);
+      background: rgba(8, 24, 58, 0.8);
     }
     .meter-fill {
       position: absolute;
       inset: 0;
       width: 0%;
-      background: linear-gradient(90deg, #22ffe0 0%, #72ffe3 50%, #22ffe0 100%);
-      box-shadow: 0 0 12px rgba(61, 255, 221, 0.6);
+      background: linear-gradient(90deg, #21ffe6 0%, #78ffe9 50%, #21ffe6 100%);
       transition: width 0.4s ease;
     }
     .meter.active .meter-fill {
-      animation: progress-stripes 1.1s linear infinite;
-      background-size: 28px 100%;
-      opacity: 0.8;
-      width: 100%;
+      animation: slide 1s linear infinite;
+      background-size: 32px 100%;
     }
-    .meter-readout { font-size: 0.78rem; color: #9dfcff; }
-    @keyframes progress-stripes {
-      0% { background-position: 0 0; }
-      100% { background-position: 28px 0; }
+    @keyframes slide {
+      from { background-position: 0 0; }
+      to { background-position: 32px 0; }
     }
-    .telemetry-entry {
-      margin-bottom: 8px;
-      padding: 8px;
-      background: rgba(9, 22, 58, 0.85);
-      border: 1px solid rgba(87, 255, 235, 0.25);
-      border-radius: 6px;
-      font-size: 0.78rem;
-      line-height: 1.35;
-    }
-    .telemetry-wrapper {
-      flex: 1;
-      max-height: 360px;
-      overflow-y: auto;
-      padding-right: 6px;
+    .telemetry-feed {
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 10px;
+      max-height: 420px;
+      overflow-y: auto;
+      padding-right: 6px;
+    }
+    .telemetry-entry {
+      padding: 10px;
+      border-radius: 10px;
+      background: rgba(12, 32, 68, 0.7);
+      border: 1px solid rgba(120, 255, 240, 0.22);
+      font-size: 0.78rem;
+      line-height: 1.35;
     }
     .badge {
       display: inline-block;
       padding: 2px 8px;
       border-radius: 999px;
-      margin-right: 6px;
-      font-size: 0.65rem;
-      text-transform: uppercase;
+      font-size: 0.62rem;
       letter-spacing: 0.18em;
-      color: #04102a;
+      margin-bottom: 6px;
       font-weight: 700;
+      text-transform: uppercase;
+      color: #02122a;
     }
-    .badge.param { background: #7fffd0; }
-    .badge.train { background: #ffdb6e; }
-    .badge.ingest { background: #7ecbff; }
-    .badge.spatial { background: #c592ff; color: #0c0120; }
+    .badge.param { background: #6dffd4; }
+    .badge.train { background: #ffe480; }
+    .badge.ingest { background: #7fd1ff; }
+    .badge.spatial { background: #d9a5ff; color: #1c012c; }
+    canvas {
+      border-radius: 10px;
+      border: 1px solid rgba(120, 255, 230, 0.25);
+      background: radial-gradient(circle at 45% 20%, rgba(56, 150, 200, 0.35), rgba(6, 18, 44, 0.95));
+      width: 100%;
+      height: 220px;
+    }
+    pre.mono {
+      margin: 0;
+      max-height: 180px;
+      overflow-y: auto;
+      padding: 10px;
+      background: rgba(12, 32, 68, 0.6);
+      border-radius: 8px;
+      border: 1px solid rgba(120, 255, 240, 0.18);
+    }
+    .control-group {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+      align-items: start;
+    }
+    .control {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    label.checkbox {
+      font-size: 0.78rem;
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      color: #9fe2ff;
+    }
+    input[type=\"file\"] {
+      color: #a6faff;
+    }
+    @media (max-width: 1280px) {
+      main.grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+      .panel { grid-column: span 6; }
+      .span-2, .span-3 { grid-column: span 6; }
+    }
+    @media (max-width: 760px) {
+      main.grid { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 18px; }
+      .panel { grid-column: span 2; }
+    }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Salience Runtime Dashboard</h1>
-    <div id=\"meta\" class=\"meta\"></div>
+  <header class=\"app-header\">
+    <div class=\"brand\">
+      <h1>Salience Runtime Observatory</h1>
+      <div id=\"meta\" class=\"meta\"></div>
+    </div>
+    <div class=\"status-pills\">
+      <div class=\"pill\" id=\"learningPill\"><span class=\"label\">Learning</span><span class=\"value\" id=\"learningState\">Idle</span></div>
+      <div class=\"pill\" id=\"filterPill\"><span class=\"label\">Ingest Filter</span><span class=\"value\" id=\"filterState\">Unknown</span></div>
+      <div class=\"pill\" id=\"trainingPill\"><span class=\"label\">Training Active</span><span class=\"value\" id=\"trainingState\">Unknown</span></div>
+    </div>
   </header>
-  <main>
+  <main class=\"grid\">
+    <section class=\"panel span-2\">
+      <div class=\"panel-title\">Overview</div>
+      <div class=\"kv-grid\" id=\"overviewStats\"></div>
+      <div class=\"sparkline-grid\">
+        <div class=\"spark-card\"><div class=\"spark-label\">Decision score</div><div class=\"sparkline\" id=\"scoreSpark\">—</div></div>
+        <div class=\"spark-card\"><div class=\"spark-label\">Budget ratio</div><div class=\"sparkline\" id=\"budgetSpark\">—</div></div>
+        <div class=\"spark-card\"><div class=\"spark-label\">Idea acceptance</div><div class=\"sparkline\" id=\"ideaSpark\">—</div></div>
+        <div class=\"spark-card\"><div class=\"spark-label\">Verification rate</div><div class=\"sparkline\" id=\"verificationSpark\">—</div></div>
+      </div>
+    </section>
     <section class=\"panel\">
-      <h2>Decision</h2>
+      <div class=\"panel-title\">Decision</div>
       <div id=\"decision\"></div>
     </section>
     <section class=\"panel\">
-      <h2>Status</h2>
-      <div class=\"meter-block\">
-        <span class=\"meter-label\">Budget Utilisation</span>
-        <div class=\"meter\" id=\"budgetMeter\">
-          <div class=\"meter-fill\" id=\"budgetFill\"></div>
-        </div>
-        <div class=\"meter-readout mono\" id=\"budgetPercent\">0%</div>
+      <div class=\"panel-title\">Status</div>
+      <div class=\"kv-grid\" id=\"status\"></div>
+      <div>
+        <div class=\"label\" style=\"text-transform:uppercase;font-size:0.7rem;letter-spacing:0.14em;color:#6fd9ff;\">Budget utilisation</div>
+        <div class=\"meter\" id=\"budgetMeter\"><div class=\"meter-fill\" id=\"budgetFill\"></div></div>
+        <div class=\"status-line\" id=\"budgetPercent\">0%</div>
       </div>
-      <div id=\"status\"></div>
     </section>
-    <section class=\"panel scroll\">
-      <h2>Scratchpad</h2>
-      <div id=\"scratchpad\"></div>
+    <section class=\"panel\">
+      <div class=\"panel-title\">Salience</div>
+      <div id=\"salience\"></div>
+      <div class=\"chip-row\" id=\"yearning\"></div>
     </section>
-    <section class=\"panel spatial-panel\">
-      <h2>4D Reasoning Map</h2>
-      <canvas id=\"spatialCanvas\" width=\"360\" height=\"220\"></canvas>
-      <pre class=\"mono\" id=\"spatialAscii\"></pre>
-      <div id=\"spatialSummary\"></div>
-    </section>
-    <section class=\"panel scroll\">
-      <h2>Todos</h2>
+    <section class=\"panel\">
+      <div class=\"panel-title\">Todos</div>
       <div id=\"todos\"></div>
     </section>
-    <section class=\"panel scroll\">
-      <h2>Maintenance</h2>
+    <section class=\"panel\">
+      <div class=\"panel-title\">Maintenance</div>
       <div id=\"maintenance\"></div>
     </section>
-    <section class=\"panel scroll\">
-      <h2>Experiments</h2>
+    <section class=\"panel\">
+      <div class=\"panel-title\">Experiments</div>
       <div id=\"experiments\"></div>
     </section>
-    <section class="panel conversation-panel">
-      <h2>Conversation</h2>
-      <div class="conversation-wrapper" id="conversationWrapper">
-        <div id="conversation"></div>
-      </div>
+    <section class=\"panel span-2\">
+      <div class=\"panel-title\">Scratchpad</div>
+      <div id=\"scratchpad\"></div>
+    </section>
+    <section class=\"panel span-2\">
+      <div class=\"panel-title\">Conversation</div>
+      <div class=\"conversation\" id=\"conversationWrapper\"><div id=\"conversation\"></div></div>
     </section>
     <section class=\"panel\">
-      <h2>Send Message</h2>
+      <div class=\"panel-title\">4D Trajectory</div>
+      <canvas id=\"spatialCanvas\" width=\"360\" height=\"220\"></canvas>
+      <pre class=\"mono\" id=\"spatialAscii\"></pre>
+      <div class=\"status-line\" id=\"spatialSummary\"></div>
+    </section>
+    <section class=\"panel\">
+      <div class=\"panel-title\">Send Message</div>
       <form id=\"utterForm\">
-        <textarea id=\"utterInput\" placeholder=\"Type a message for the agent...\"></textarea>
-        <div class=\"status\" id=\"utterStatus\"></div>
-        <button type=\"submit\" id=\"utterSubmit\">Send</button>
+        <textarea id=\"utterInput\" placeholder=\"Type a message for the runtime...\"></textarea>
+        <div class=\"status-line\" id=\"utterStatus\"></div>
+        <button type=\"submit\" id=\"utterSubmit\">Transmit</button>
       </form>
     </section>
     <section class=\"panel\">
-      <h2>Think</h2>
-      <button type=\"button\" id=\"thinkButton\">Poke Reflect</button>
-      <div class=\"status\" id=\"thinkStatus\"></div>
+      <div class=\"panel-title\">Runtime Controls</div>
+      <div class=\"control-group\">
+        <div class=\"control\"><button type=\"button\" id=\"thinkButton\">Reflection pulse</button><div class=\"status-line\" id=\"thinkStatus\"></div></div>
+        <div class=\"control\"><button type=\"button\" id=\"runGymButton\">Curriculum sweep</button><div class=\"status-line\" id=\"runGymStatus\"></div><div class=\"meter\" id=\"runGymMeter\"><div class=\"meter-fill\"></div></div></div>
+        <div class=\"control\"><button type=\"button\" id=\"eatFoodButton\">Digest food corpus</button><div class=\"status-line\" id=\"eatFoodStatus\"></div><div class=\"meter\" id=\"eatFoodMeter\"><div class=\"meter-fill\"></div></div></div>
+      </div>
     </section>
     <section class=\"panel\">
-      <h2>Gym &amp; Food</h2>
-      <div class=\"control-block\">
-        <button type=\"button\" id=\"runGymButton\">Run Gym</button>
-        <div class=\"meter\" id=\"runGymMeter\"><div class=\"meter-fill\"></div></div>
-        <div class=\"status\" id=\"runGymStatus\"></div>
+      <div class=\"panel-title\">Learning + Filters</div>
+      <div class=\"control-group\">
+        <div class=\"control\"><button type=\"button\" id=\"toggleLearningButton\">Toggle lightweight learning</button><div class=\"status-line\" id=\"learningStatus\"></div></div>
+        <div class=\"control\"><button type=\"button\" id=\"flushLearningButton\">Flush buffer to train</button><div class=\"status-line\" id=\"flushStatus\"></div></div>
+        <div class=\"control\"><button type=\"button\" id=\"trainingActiveButton\">Toggle training active</button><div class=\"status-line\" id=\"trainingStatus\"></div></div>
+        <div class=\"control\"><button type=\"button\" id=\"toggleFilterButton\">Toggle ingest filter</button><div class=\"status-line\" id=\"filterStatus\"></div></div>
       </div>
-      <div class=\"control-block\">
-        <button type=\"button\" id=\"eatFoodButton\">Eat Food</button>
-        <div class=\"meter\" id=\"eatFoodMeter\"><div class=\"meter-fill\"></div></div>
-      </div>
+      <div class=\"kv-grid\" id=\"trainingStats\"></div>
     </section>
-    <section class="panel">
-      <h2>Upload Training Data</h2>
-      <form id="uploadForm">
-        <input type="file" id="uploadInput" accept=".txt,.md,.log,.json,.csv" multiple />
-        <label class="checkbox">
-          <input type="checkbox" id="allowDuplicates" /> Allow duplicate ingest (testing)
-        </label>
-        <div class="status" id="uploadStatus"></div>
-        <button type="submit" id="uploadSubmit">Upload &amp; Ingest</button>
+    <section class=\"panel\">
+      <div class=\"panel-title\">Upload &amp; Ingest</div>
+      <form id=\"uploadForm\">
+        <input type=\"file\" id=\"uploadInput\" accept=\".txt,.md,.log,.json,.csv\" multiple />
+        <label class=\"checkbox\"><input type=\"checkbox\" id=\"allowDuplicates\" /> Allow duplicate ingest</label>
+        <div class=\"status-line\" id=\"uploadStatus\"></div>
+        <button type=\"submit\" id=\"uploadSubmit\">Upload &amp; ingest</button>
       </form>
     </section>
-    <section class="panel">
-      <h2>Telemetry</h2>
-      <div class="telemetry-wrapper" id="telemetryWrapper">
-        <div id="telemetry"></div>
-      </div>
+    <section class=\"panel span-2\">
+      <div class=\"panel-title\">Telemetry</div>
+      <div class=\"telemetry-feed\" id=\"telemetryWrapper\"><div id=\"telemetry\"></div></div>
     </section>
   </main>
   <script>
-    async function fetchJson(path) {
-      const resp = await fetch(path, { cache: 'no-cache' });
-      if (!resp.ok) { throw new Error(`HTTP ${resp.status}`); }
+    async function fetchJson(path, options = {}) {
+      const resp = await fetch(path, { cache: 'no-cache', ...options });
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(text || `HTTP ${resp.status}`);
+      }
       return resp.json();
     }
 
-    function renderKeyValue(container, record) {
-      if (!record || Object.keys(record).length === 0) {
-        container.innerHTML = '<span class="error">No data</span>';
+    function renderKeyValues(container, entries) {
+      if (!entries || entries.length === 0) {
+        container.innerHTML = '<div class="status-line">No data</div>';
         return;
       }
-      let html = '<div class="kv-grid">';
-      for (const [key, value] of Object.entries(record)) {
-        html += `<div class="kv-row"><span class="kv-label">${key.replace(/_/g, ' ')}</span><span class="kv-value">${value ?? ''}</span></div>`;
-      }
-      html += '</div>';
-      container.innerHTML = html;
+      container.innerHTML = entries.map(({ label, value }) => (
+        `<div class="kv"><div class="label">${label}</div><div class="value">${value ?? ''}</div></div>`
+      )).join('');
     }
 
     function renderTable(container, rows) {
       if (!rows || rows.length === 0) {
-        container.innerHTML = '<span class="error">No data</span>';
+        container.innerHTML = '<div class="status-line">No entries</div>';
         return;
       }
       const header = Object.keys(rows[0]);
-      let html = '<table><thead><tr>' + header.map(h => `<th>${h.replace(/_/g, ' ')}</th>`).join('') + '</tr></thead><tbody>';
+      let html = '<table class="list-table">';
       for (const row of rows) {
-        html += '<tr>' + header.map(h => `<td>${row[h] ?? ''}</td>`).join('') + '</tr>';
-      }
-      html += '</tbody></table>';
-      container.innerHTML = html;
-    }
-
-    function renderList(container, entries) {
-      if (!entries || entries.length === 0) {
-        container.innerHTML = '<span class="error">No entries</span>';
-        return;
-      }
-      container.innerHTML = `<pre class="mono">${entries.join('\\n')}</pre>`;
-    }
-
-    function renderSpatial(payload) {
-      const canvas = document.getElementById('spatialCanvas');
-      const ascii = document.getElementById('spatialAscii');
-      const summary = document.getElementById('spatialSummary');
-      if (!canvas || !canvas.getContext) {
-        return;
-      }
-      const ctx = canvas.getContext('2d');
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = 'rgba(6, 12, 30, 0.9)';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      if (!payload) {
-        ascii.textContent = '<empty>';
-        summary.textContent = 'no path';
-        return;
-      }
-
-      ascii.textContent = payload.ascii || '<empty>';
-      summary.textContent = payload.summary || 'no path';
-
-      const points = Array.isArray(payload.points) ? payload.points : [];
-      if (!points.length) {
-        ctx.fillStyle = 'rgba(120, 150, 210, 0.18)';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        return;
-      }
-
-      const projections = points.map((point) => point.projection || { u: 0, v: 0 });
-      const us = projections.map((p) => p.u);
-      const vs = projections.map((p) => p.v);
-      const minU = Math.min(...us);
-      const maxU = Math.max(...us);
-      const minV = Math.min(...vs);
-      const maxV = Math.max(...vs);
-      const spanU = maxU - minU || 1;
-      const spanV = maxV - minV || 1;
-
-      ctx.strokeStyle = 'rgba(95, 220, 255, 0.25)';
-      ctx.lineWidth = 1;
-      const gridSteps = 6;
-      for (let i = 0; i <= gridSteps; i++) {
-        const x = (i / gridSteps) * canvas.width;
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, canvas.height);
-        ctx.stroke();
-      }
-      for (let i = 0; i <= gridSteps; i++) {
-        const y = (i / gridSteps) * canvas.height;
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(canvas.width, y);
-        ctx.stroke();
-      }
-
-      ctx.beginPath();
-      projections.forEach((proj, index) => {
-        const x = ((proj.u - minU) / spanU) * canvas.width;
-        const y = canvas.height - ((proj.v - minV) / spanV) * canvas.height;
-        if (index === 0) {
-          ctx.moveTo(x, y);
-        } else {
-          ctx.lineTo(x, y);
+        html += '<tr>';
+        for (const key of header) {
+          html += `<td>${row[key] ?? ''}</td>`;
         }
-      });
-      ctx.strokeStyle = 'rgba(126, 255, 230, 0.85)';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-
-      projections.forEach((proj, index) => {
-        const point = points[index];
-        const x = ((proj.u - minU) / spanU) * canvas.width;
-        const y = canvas.height - ((proj.v - minV) / spanV) * canvas.height;
-        const w = Number.parseFloat(point.w ?? 0);
-        const hue = w >= 0 ? 160 : 280;
-        const intensity = Math.min(1, Math.abs(w));
-        ctx.fillStyle = `hsla(${hue}, 70%, ${50 + intensity * 20}%, 0.9)`;
-        ctx.beginPath();
-        ctx.arc(x, y, 6, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = 'rgba(12, 20, 40, 0.9)';
-        ctx.font = '10px monospace';
-        ctx.fillText(String(index + 1), x + 8, y - 6);
-      });
-    }
-
-    function renderTodos(container, todos) {
-      if (!todos || todos.length === 0) {
-        container.innerHTML = '<span class="error">No todos</span>';
-        return;
+        html += '</tr>';
       }
-      let html = '<table><thead><tr><th>#</th><th>todo</th><th>score</th></tr></thead><tbody>';
-      for (const todo of todos) {
-        html += `<tr><td>${todo.id}</td><td>${todo.text}</td><td>${todo.score}</td></tr>`;
-      }
-      html += '</tbody></table>';
+      html += '</table>';
       container.innerHTML = html;
     }
 
-    function escapeHtml(str) {
-      const map = {
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#39;'
-      };
-      return str.replace(/[&<>'"]/g, (char) => map[char] || char);
+    function renderList(container, lines) {
+      if (!lines || lines.length === 0) {
+        container.innerHTML = '<div class="status-line">No signal yet.</div>';
+        return;
+      }
+      container.innerHTML = `<pre class="mono">${lines.join('\\n')}</pre>`;
     }
 
     function renderConversation(container, history) {
       if (!history || history.length === 0) {
-        container.innerHTML = '<span class="error">No conversation yet</span>';
+        container.innerHTML = '<div class="status-line">No dialogue yet.</div>';
         return;
       }
-      const fragments = history.map(entry => {
-        const speaker = escapeHtml(entry.speaker || '?');
-        const text = escapeHtml(entry.text || '');
-        const roleClass = entry.speaker === 'assistant' ? 'assistant' : 'user';
-        return `<div class="bubble ${roleClass}"><span class="speaker">${speaker}</span><pre>${text}</pre></div>`;
-      });
-      container.innerHTML = fragments.join('');
-      const wrapper = container.parentElement;
-      if (wrapper && wrapper.classList.contains('conversation-wrapper')) {
-        wrapper.scrollTop = wrapper.scrollHeight;
+      container.innerHTML = history.map((entry) => {
+        const speaker = entry.speaker || 'agent';
+        const klass = speaker.toLowerCase().includes('user') ? 'bubble user' : 'bubble assistant';
+        return `<div class="${klass}"><span class="speaker">${speaker}</span><pre>${entry.text || ''}</pre></div>`;
+      }).join('');
+    }
+
+    function renderSalience(container, payload) {
+      if (!payload || !payload.top || payload.top.length === 0) {
+        container.innerHTML = '<div class="status-line">No salience vector.</div>';
+        return;
+      }
+      const rows = payload.top.map((item) => (
+        `<tr><td>${item.dimension}</td><td>${item.value.toFixed(3)}</td><td>${(item.percent * 100).toFixed(1)}%</td></tr>`
+      ));
+      container.innerHTML = `<table class="list-table"><tr><td>Dim</td><td>Value</td><td>Share</td></tr>${rows.join('')}</table>`;
+    }
+
+    function renderYearning(container, payload) {
+      if (!payload || Object.keys(payload).length === 0) {
+        container.innerHTML = '<div class="status-line">No yearning snapshot.</div>';
+        return;
+      }
+      container.innerHTML = Object.entries(payload).map(([name, bands]) => {
+        const score = (bands.score ?? bands.confidence ?? 0).toFixed(2);
+        return `<span class="chip">${name}: ${score}</span>`;
+      }).join('');
+    }
+
+    function renderTelemetry(container, entries) {
+      container.innerHTML = '';
+      if (!entries || entries.length === 0) {
+        container.innerHTML = '<div class="status-line">No telemetry yet.</div>';
+        return;
+      }
+      for (const entry of entries) {
+        const badgeClass = entry.type.startsWith('parameters') ? 'param'
+          : entry.type.startsWith('training') ? 'train'
+          : entry.type.startsWith('spatial') ? 'spatial'
+          : 'ingest';
+        const label = entry.type.split('/')[0] || 'event';
+        const div = document.createElement('div');
+        div.className = 'telemetry-entry';
+        div.innerHTML = `<span class="badge ${badgeClass}">${label}</span><pre>${entry.rendered}</pre>`;
+        container.appendChild(div);
       }
     }
 
-    function updateMeterFromRatio(ratioValue) {
-      const fill = document.getElementById('budgetFill');
-      const label = document.getElementById('budgetPercent');
-      let ratio = Number.parseFloat(ratioValue);
-      if (!Number.isFinite(ratio)) {
-        ratio = 0;
+    function renderSparklines(data = {}) {
+      const { score = '—', budget = '—', acceptance = '—', verification = '—' } = data;
+      document.getElementById('scoreSpark').textContent = score;
+      document.getElementById('budgetSpark').textContent = budget;
+      document.getElementById('ideaSpark').textContent = acceptance;
+      document.getElementById('verificationSpark').textContent = verification;
+    }
+
+    function renderSpatial(payload) {
+      const canvas = document.getElementById('spatialCanvas');
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (payload && Array.isArray(payload.points) && payload.points.length) {
+        const xs = payload.points.map(p => p.x ?? 0);
+        const ys = payload.points.map(p => p.y ?? 0);
+        const minX = Math.min(...xs);
+        const maxX = Math.max(...xs);
+        const minY = Math.min(...ys);
+        const maxY = Math.max(...ys);
+        const pad = 12;
+        const toCanvasX = (x) => {
+          if (maxX === minX) return canvas.width / 2;
+          return pad + ((x - minX) / (maxX - minX)) * (canvas.width - pad * 2);
+        };
+        const toCanvasY = (y) => {
+          if (maxY === minY) return canvas.height / 2;
+          return canvas.height - (pad + ((y - minY) / (maxY - minY)) * (canvas.height - pad * 2));
+        };
+        ctx.beginPath();
+        payload.points.forEach((pt, idx) => {
+          const x = toCanvasX(pt.x ?? 0);
+          const y = toCanvasY(pt.y ?? 0);
+          if (idx === 0) {
+            ctx.moveTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
+        });
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = 'rgba(80, 255, 220, 0.7)';
+        ctx.stroke();
+        const last = payload.points[payload.points.length - 1];
+        ctx.beginPath();
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.arc(toCanvasX(last.x ?? 0), toCanvasY(last.y ?? 0), 5, 0, Math.PI * 2);
+        ctx.fill();
       }
-      const clamped = Math.max(0, Math.min(1, ratio));
-      fill.style.width = `${(clamped * 100).toFixed(0)}%`;
-      label.textContent = `${(clamped * 100).toFixed(0)}%`;
+      document.getElementById('spatialAscii').textContent = payload?.ascii || '';
+      document.getElementById('spatialSummary').textContent = payload?.summary || '';
+    }
+
+    function updateMeter(ratio) {
+      const clamp = Math.max(0, Math.min(1, Number(ratio) || 0));
+      document.getElementById('budgetFill').style.width = `${(clamp * 100).toFixed(1)}%`;
+      document.getElementById('budgetPercent').textContent = `${(clamp * 100).toFixed(1)}% budget consumed`;
     }
 
     async function refresh() {
       try {
         const data = await fetchJson('/metrics');
         document.getElementById('meta').textContent = data.meta_report || '';
-        renderKeyValue(document.getElementById('decision'), data.decision);
-        renderKeyValue(document.getElementById('status'), data.status);
-        renderList(document.getElementById('scratchpad'), data.scratchpad);
+        renderKeyValues(document.getElementById('overviewStats'), data.overview || []);
+        renderKeyValues(document.getElementById('decision'), data.decision_rows || []);
+        renderKeyValues(document.getElementById('status'), data.status_rows || []);
+        renderSparklines(data.sparklines || {});
+        renderSalience(document.getElementById('salience'), data.salience);
+        renderYearning(document.getElementById('yearning'), data.yearning);
+        renderList(document.getElementById('scratchpad'), data.scratchpad || []);
+        renderTable(document.getElementById('todos'), data.todos || []);
+        renderTable(document.getElementById('maintenance'), data.maintenance || []);
+        renderTable(document.getElementById('experiments'), data.experiments || []);
+        renderConversation(document.getElementById('conversation'), data.history || []);
         renderSpatial(data.spatial);
-        renderTodos(document.getElementById('todos'), data.todos);
-        renderTable(document.getElementById('maintenance'), data.maintenance);
-        renderTable(document.getElementById('experiments'), data.experiments);
-        renderConversation(document.getElementById('conversation'), data.history);
-        updateMeterFromRatio(data.status?.budget_ratio ?? 0);
+        renderKeyValues(document.getElementById('trainingStats'), data.training_rows || []);
+        updateMeter(data.status?.budget_ratio_numeric ?? 0);
+        document.getElementById('learningState').textContent = data.training?.learning_enabled ? 'Enabled' : 'Disabled';
+        document.getElementById('filterState').textContent = data.filter?.enabled ? 'Active' : 'Bypassed';
+        document.getElementById('trainingState').textContent = data.training?.runtime_active ? 'Active' : 'Idle';
       } catch (err) {
         console.error(err);
       }
@@ -682,60 +791,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       try {
         const telem = await fetchJson('/telemetry');
         const wrapper = document.getElementById('telemetryWrapper');
-        const root = document.getElementById('telemetry');
-        root.innerHTML = '';
-        for (const entry of telem.entries) {
-          const div = document.createElement('div');
-          div.className = 'telemetry-entry';
-          let badgeClass = 'ingest';
-          let badgeLabel = 'event';
-          switch (entry.type) {
-            case 'parameters/update':
-              badgeClass = 'param';
-              badgeLabel = 'params';
-              break;
-            case 'training/step':
-              badgeClass = 'train';
-              badgeLabel = 'train';
-              break;
-            case 'ingestion/chunk':
-              badgeClass = 'ingest';
-              badgeLabel = 'ingest';
-              break;
-            case 'spatial/update':
-              badgeClass = 'spatial';
-              badgeLabel = '4D';
-              break;
-            default:
-              badgeClass = 'ingest';
-              badgeLabel = entry.type.split('/')[0] || 'event';
-              break;
-          }
-          div.innerHTML = `<span class="badge ${badgeClass}">${badgeLabel}</span><pre>${entry.rendered}</pre>`;
-          root.appendChild(div);
-          if (entry.type === 'spatial/update' && entry.payload) {
-            const payload = entry.payload;
-            if (payload.path && typeof payload.path === 'object') {
-              renderSpatial({
-                summary: payload.summary,
-                ascii: payload.ascii,
-                points: payload.path.points || [],
-              });
-            } else {
-              renderSpatial(payload);
-            }
-          }
-        }
-        if (wrapper) {
-          wrapper.scrollTop = wrapper.scrollHeight;
-        }
+        renderTelemetry(document.getElementById('telemetry'), telem.entries || []);
+        wrapper.scrollTop = wrapper.scrollHeight;
       } catch (err) {
         console.error(err);
       }
     }
 
     refresh();
-    setInterval(refresh, 1000);
+    setInterval(refresh, 1200);
 
     document.getElementById('utterForm').addEventListener('submit', async (event) => {
       event.preventDefault();
@@ -748,33 +812,113 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         return;
       }
       button.disabled = true;
-      status.textContent = 'Sending...';
+      status.textContent = 'Transmitting...';
       try {
-        const resp = await fetch('/utter', {
+        const payload = await fetchJson('/utter', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text }),
+          body: JSON.stringify({ text })
         });
-        if (!resp.ok) {
-          const errText = await resp.text();
-          throw new Error(errText || `HTTP ${resp.status}`);
-        }
-        const payload = await resp.json();
         status.textContent = `agent> ${payload.response || '(no reply)'}`;
         input.value = '';
         await refresh();
       } catch (err) {
-        console.error(err);
         status.textContent = `Error: ${err.message}`;
       } finally {
         button.disabled = false;
       }
     });
 
+    async function simplePost(path, statusEl) {
+      statusEl.textContent = 'Running...';
+      try {
+        const payload = await fetchJson(path, { method: 'POST' });
+        statusEl.textContent = payload.status || 'Done.';
+        await refresh();
+      } catch (err) {
+        statusEl.textContent = `Error: ${err.message}`;
+      }
+    }
+
+    function activateMeter(meter, active) {
+      if (!meter) return;
+      meter.classList.toggle('active', active);
+      if (!active) {
+        const fill = meter.querySelector('.meter-fill');
+        if (fill) {
+          fill.style.width = '0%';
+        }
+      }
+    }
+
+    async function triggerIngestion(endpoint, statusId, meterId, successMessage) {
+      const status = document.getElementById(statusId);
+      const meter = document.getElementById(meterId);
+      activateMeter(meter, true);
+      status.textContent = 'Running...';
+      try {
+        const payload = await fetchJson(endpoint, { method: 'POST' });
+        status.textContent = successMessage(payload);
+        const fill = meter.querySelector('.meter-fill');
+        if (fill) {
+          fill.style.width = '100%';
+          setTimeout(() => activateMeter(meter, false), 900);
+        } else {
+          activateMeter(meter, false);
+        }
+        await refresh();
+      } catch (err) {
+        status.textContent = `Error: ${err.message}`;
+        activateMeter(meter, false);
+      }
+    }
+
+    document.getElementById('thinkButton').addEventListener('click', () => {
+      simplePost('/think', document.getElementById('thinkStatus'));
+    });
+
+    document.getElementById('runGymButton').addEventListener('click', () => {
+      triggerIngestion(
+        '/run_gym',
+        'runGymStatus',
+        'runGymMeter',
+        (payload) => `Processed ${payload.examples || 0} examples.`
+      );
+    });
+
+    document.getElementById('eatFoodButton').addEventListener('click', () => {
+      triggerIngestion(
+        '/eat_food',
+        'eatFoodStatus',
+        'eatFoodMeter',
+        (payload) => `Digested ${payload.files || 0} files / ${payload.chunks || 0} chunks.`
+      );
+    });
+
+    document.getElementById('toggleLearningButton').addEventListener('click', () => {
+      simplePost('/toggle_learning', document.getElementById('learningStatus'));
+    });
+
+    document.getElementById('flushLearningButton').addEventListener('click', () => {
+      simplePost('/flush_learning', document.getElementById('flushStatus'));
+    });
+
+    document.getElementById('trainingActiveButton').addEventListener('click', () => {
+      simplePost('/training_active', document.getElementById('trainingStatus'));
+    });
+
+    document.getElementById('toggleFilterButton').addEventListener('click', () => {
+      simplePost('/toggle_filter', document.getElementById('filterStatus'));
+    });
+
     document.getElementById('uploadForm').addEventListener('submit', async (event) => {
       event.preventDefault();
-      const files = document.getElementById('uploadInput').files;
+      const input = document.getElementById('uploadInput');
+      const files = input.files;
+      const status = document.getElementById('uploadStatus');
+      const button = document.getElementById('uploadSubmit');
       if (!files.length) {
+        status.textContent = 'Select file(s) first.';
         return;
       }
       const allowDuplicates = document.getElementById('allowDuplicates').checked;
@@ -783,109 +927,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         formData.append('files', file, file.name);
       }
       formData.append('allow_duplicates', allowDuplicates ? '1' : '0');
+      button.disabled = true;
+      status.textContent = 'Uploading...';
       try {
-        const resp = await fetch('/ingest', {
-          method: 'POST',
-          body: formData,
-        });
-        if (!resp.ok) {
-          const errText = await resp.text();
-          throw new Error(errText || `HTTP ${resp.status}`);
-        }
-        const payload = await resp.json();
-        status.textContent = `Ingested ${payload.segments} segments from ${payload.files.length} file(s).`;
+        const payload = await fetchJson('/ingest', { method: 'POST', body: formData });
+        status.textContent = `Ingested ${payload.segments || 0} segments from ${(payload.files || []).length} file(s).`;
         input.value = '';
         await refresh();
       } catch (err) {
-        console.error(err);
         status.textContent = `Error: ${err.message}`;
       } finally {
         button.disabled = false;
       }
-    });
-
-    document.getElementById('thinkButton').addEventListener('click', async () => {
-      const status = document.getElementById('thinkStatus');
-      const button = document.getElementById('thinkButton');
-      button.disabled = true;
-      status.textContent = 'Nudging...';
-      try {
-        const resp = await fetch('/think', { method: 'POST' });
-        if (!resp.ok) {
-          const errText = await resp.text();
-          throw new Error(errText || `HTTP ${resp.status}`);
-        }
-        status.textContent = 'Reflection poke queued.';
-        await refresh();
-      } catch (err) {
-        console.error(err);
-        status.textContent = `Error: ${err.message}`;
-      } finally {
-        button.disabled = false;
-      }
-    });
-
-    function activateMeter(meter, active) {
-      if (!meter) { return; }
-      const fill = meter.querySelector('.meter-fill');
-      if (active) {
-        meter.classList.add('active');
-        if (fill) { fill.style.width = '0%'; }
-      } else {
-        meter.classList.remove('active');
-        if (fill) { fill.style.width = '0%'; }
-      }
-    }
-
-    async function triggerIngestion(endpoint, statusElement, buttonElement, meterElement, successMessage) {
-      buttonElement.disabled = true;
-      statusElement.textContent = 'Running...';
-      activateMeter(meterElement, true);
-      try {
-        const resp = await fetch(endpoint, { method: 'POST' });
-        if (!resp.ok) {
-          const errText = await resp.text();
-          throw new Error(errText || `HTTP ${resp.status}`);
-        }
-        const payload = await resp.json();
-        statusElement.textContent = successMessage(payload);
-        if (meterElement) {
-          const fill = meterElement.querySelector('.meter-fill');
-          if (fill) {
-            fill.style.width = '100%';
-            setTimeout(() => {
-              activateMeter(meterElement, false);
-            }, 1000);
-          }
-        }
-        await refresh();
-      } catch (err) {
-        console.error(err);
-        statusElement.textContent = `Error: ${err.message}`;
-        activateMeter(meterElement, false);
-      } finally {
-        buttonElement.disabled = false;
-      }
-    }
-
-    document.getElementById('runGymButton').addEventListener('click', async () => {
-      await triggerIngestion(
-        '/run_gym',
-        document.getElementById('runGymStatus'),
-        document.getElementById('runGymButton'),
-        document.getElementById('runGymMeter'),
-        (payload) => `Processed ${payload.examples || 0} examples.`
-      );
-    });
-
-    document.getElementById('eatFoodButton').addEventListener('click', async () => {
-      await triggerIngestion(
-        '/eat_food',
-        document.getElementById('eatFoodStatus'),
-        document.getElementById('eatFoodButton'),
-        document.getElementById('eatFoodMeter'),
-        (payload) => `Digested ${payload.files || 0} files / ${payload.chunks || 0} chunks.`
-      );
     });
   </script>
 </body>
@@ -902,37 +955,37 @@ class DashboardState:
         self._latest_metrics: Optional[RuntimeMetrics] = None
         self._latest_snapshot: Optional[ConversationSnapshot] = None
         self._telemetry: List[Dict[str, object]] = []
-        self._max_telemetry = 200
+        self._max_telemetry = 250
         self._cached_payload: Dict[str, object] = self._build_default_payload()
+        self._score_history: Deque[float] = deque(maxlen=96)
+        self._budget_history: Deque[float] = deque(maxlen=96)
+        self._accept_history: Deque[float] = deque(maxlen=96)
+        self._verification_history: Deque[float] = deque(maxlen=96)
 
     def _build_default_payload(self) -> Dict[str, object]:
         return {
             "meta_report": "(awaiting conversation)",
-            "decision": {
-                "action": "-",
-                "score": "0.00",
-                "cooldown": 0,
-                "hysteresis_delta": "0.00",
-            },
-            "status": {
-                "step": 0,
-                "budget_left": "0.0",
-                "idea_acceptances": 0,
-                "verification_passed": None,
-                "budget_ratio": "0.00",
-                "events": "<none>",
-            },
-            "scratchpad": ["<empty scratchpad>"],
-            "spatial": {
-                "summary": "no path",
-                "ascii": "<empty>",
-                "points": [],
-                "metadata": {},
-            },
-            "todos": [{"id": "-", "text": "<empty>", "score": "0.00"}],
-            "maintenance": [{"category": "<none>", "count": "0"}],
-            "experiments": [{"name": "<none>", "conclusion": ""}],
+            "overview": [],
+            "decision_rows": [],
+            "status": {"budget_ratio_numeric": 0.0},
+            "status_rows": [],
+            "scratchpad": ["<empty>"],
+            "salience": {"top": [], "raw": {}},
+            "yearning": {},
+            "todos": [{"Rank": "—", "Todo": "<empty>", "Score": "0.00"}],
+            "maintenance": [{"Category": "—", "Count": "0"}],
+            "experiments": [{"Experiment": "—", "Conclusion": ""}],
             "history": [],
+            "sparklines": {
+                "score": "—",
+                "budget": "—",
+                "acceptance": "—",
+                "verification": "—",
+            },
+            "training_rows": [],
+            "training": {"learning_enabled": False, "runtime_active": False},
+            "filter": {"enabled": False, "thresholds": {}},
+            "spatial": {"summary": "no path", "ascii": "", "points": []},
         }
 
     def refresh_from_session(
@@ -950,107 +1003,189 @@ class DashboardState:
             metrics_obj = self._latest_snapshot.metrics if self._latest_snapshot else self._latest_metrics
             payload = self._build_default_payload()
 
-            if metrics_obj:
+            if metrics_obj is not None:
                 decision = metrics_obj.decision
+                scheduler = dict(metrics_obj.scheduler_snapshot or {})
+                budget_ratio = float(scheduler.get("budget_ratio", 0.0))
+                verification = metrics_obj.verification_passed
+                verification_value = (
+                    1.0
+                    if verification is True
+                    else 0.0
+                    if verification is False
+                    else 0.5
+                )
+                self._score_history.append(float(decision.score))
+                self._budget_history.append(budget_ratio)
+                self._accept_history.append(float(metrics_obj.idea_acceptances))
+                self._verification_history.append(verification_value)
+
                 payload["meta_report"] = metrics_obj.meta_report
-                payload["decision"] = {
-                    "action": str(decision.action),
-                    "score": f"{decision.score:.2f}",
-                    "cooldown": decision.cooldown_steps,
-                    "hysteresis_delta": f"{decision.hysteresis_delta:.2f}",
-                }
-                scheduler = metrics_obj.scheduler_snapshot
+                overview_rows = [
+                    {"label": "Step", "value": str(metrics_obj.step)},
+                    {"label": "Budget left", "value": f"{metrics_obj.budget_left:.1f}"},
+                ]
+                generator_desc = getattr(
+                    self._latest_snapshot,
+                    "generator_description",
+                    "",
+                )
+                if generator_desc:
+                    overview_rows.append({"label": "Generator", "value": generator_desc})
+                if metrics_obj.episode_recorded:
+                    overview_rows.append({"label": "Episode", "value": metrics_obj.episode_recorded})
+                payload["overview"] = overview_rows
+
+                payload["decision_rows"] = [
+                    {"label": "Action", "value": str(decision.action)},
+                    {"label": "Score", "value": f"{decision.score:.2f}"},
+                    {"label": "Hysteresis Δ", "value": f"{decision.hysteresis_delta:.2f}"},
+                    {"label": "Cooldown", "value": str(decision.cooldown_steps)},
+                ]
+
+                events = ", ".join(str(evt) for evt in scheduler.get("events", ())) or "—"
+                verification_label = (
+                    "Passed" if verification is True else "Failed" if verification is False else "Pending"
+                )
                 payload["status"] = {
                     "step": metrics_obj.step,
-                    "budget_left": f"{metrics_obj.budget_left:.1f}",
+                    "budget_left": metrics_obj.budget_left,
                     "idea_acceptances": metrics_obj.idea_acceptances,
-                    "verification_passed": metrics_obj.verification_passed,
-                    "budget_ratio": f"{scheduler.get('budget_ratio', 0.0):.2f}",
-                    "events": ", ".join(scheduler.get("events", ())) or "<none>",
+                    "verification": verification_label,
+                    "events": events,
+                    "budget_ratio_numeric": budget_ratio,
                 }
+                payload["status_rows"] = [
+                    {"label": "Budget left", "value": f"{metrics_obj.budget_left:.1f}"},
+                    {"label": "Idea accepts", "value": str(metrics_obj.idea_acceptances)},
+                    {"label": "Verification", "value": verification_label},
+                    {"label": "Scheduler events", "value": events},
+                ]
+
                 maintenance = metrics_obj.maintenance_report or {}
                 payload["maintenance"] = [
-                    {"category": key, "count": value}
-                    for key, value in maintenance.items()
-                ] or [{"category": "<none>", "count": "0"}]
+                    {"Category": key, "Count": str(value)}
+                    for key, value in sorted(maintenance.items())
+                ] or [{"Category": "—", "Count": "0"}]
+
                 experiments = metrics_obj.experiment_reports or ()
                 payload["experiments"] = [
                     {
-                        "name": report.get("name", "<unnamed>"),
-                        "conclusion": report.get("conclusion", ""),
+                        "Experiment": report.get("name", "—"),
+                        "Conclusion": report.get("conclusion", ""),
                     }
                     for report in experiments
-                ] or [{"name": "<none>", "conclusion": ""}]
+                ] or [{"Experiment": "—", "Conclusion": ""}]
 
-            proto_lm = getattr(self._session, "proto_lm", None)
-            if proto_lm is not None:
-                status = payload.setdefault("status", {})
-                status.setdefault("step", proto_lm.step)
-                status["model_step"] = proto_lm.step
-                status["generator"] = getattr(
-                    self._latest_snapshot,
-                    "generator_description",
-                    f"vocab_size={proto_lm.vocab.size()} step={proto_lm.step}",
-                )
-
-            if self._latest_snapshot:
-                todos_seq = list(self._latest_snapshot.todos)
-                payload["todos"] = [
-                    {
-                        "id": idx + 1,
-                        "text": getattr(item, "text", str(item)),
-                        "score": f"{getattr(item, 'score', 0.0):.2f}",
-                    }
-                    for idx, item in enumerate(todos_seq)
-                ] or [{"id": "-", "text": "<empty>", "score": "0.00"}]
+                payload["salience"] = _format_salience(dict(metrics_obj.salience_raw or {}))
+                payload["yearning"] = dict(metrics_obj.yearning_snapshot or {})
 
             scratchpad = getattr(self._session.runtime, "scratchpad", None)
             if scratchpad is not None:
-                scratch_lines = list(scratchpad.current_trace[-16:])
+                scratch_lines = list(scratchpad.current_trace[-20:])
                 if not scratch_lines:
                     scratch_lines = ["<empty>"]
-                scratch_lines.append("\nSummary: " + scratchpad.summarize(max_traces=5))
+                summary = scratchpad.summarize(max_traces=5)
+                if summary:
+                    scratch_lines.append("")
+                    scratch_lines.append("Summary: " + summary)
                 payload["scratchpad"] = scratch_lines
-                spatial_payload = payload.setdefault(
-                    "spatial",
-                    {
-                        "summary": "no path",
-                        "ascii": "<empty>",
-                        "points": [],
-                        "metadata": {},
-                    },
+                latest_path = (
+                    scratchpad.latest_four_d_path() if hasattr(scratchpad, "latest_four_d_path") else None
                 )
-                latest_path = scratchpad.latest_four_d_path() if hasattr(scratchpad, "latest_four_d_path") else None
                 if latest_path:
                     path_dict = latest_path.to_dict()
-                    spatial_payload.update(
-                        {
-                            "summary": latest_path.summary(),
-                            "ascii": latest_path.ascii_projection(),
-                            "points": path_dict.get("points", []),
-                            "centroid": path_dict.get("centroid", {}),
-                        }
-                    )
+                    payload["spatial"] = {
+                        "summary": latest_path.summary(),
+                        "ascii": latest_path.ascii_projection(),
+                        "points": path_dict.get("points", []),
+                    }
                 else:
-                    spatial_payload.update(
+                    payload["spatial"] = {"summary": "no path", "ascii": "", "points": []}
+            else:
+                payload["scratchpad"] = ["<no scratchpad>"]
+                payload["spatial"] = {"summary": "unavailable", "ascii": "", "points": []}
+
+            if self._latest_snapshot is not None:
+                todos_seq = list(self._latest_snapshot.todos)
+                payload["todos"] = [
+                    {
+                        "Rank": f"#{idx + 1}",
+                        "Todo": getattr(item, "text", str(item)),
+                        "Score": f"{getattr(item, 'score', 0.0):.2f}",
+                    }
+                    for idx, item in enumerate(todos_seq)
+                ] or [{"Rank": "—", "Todo": "<empty>", "Score": "0.00"}]
+                payload["history"] = [
+                    {"speaker": speaker, "text": text}
+                    for speaker, text in list(self._session.history)[-64:]
+                ]
+                if payload["overview"]:
+                    payload["overview"].append(
                         {
-                            "summary": "no path",
-                            "ascii": "<empty>",
-                            "points": [],
-                            "centroid": {"x": 0.0, "y": 0.0, "z": 0.0, "w": 0.0},
+                            "label": "Response length",
+                            "value": str(len(self._latest_snapshot.response or "")),
                         }
                     )
-                if getattr(scratchpad, "trace_history", None):
-                    last_trace = scratchpad.trace_history[-1]
-                    spatial_payload["metadata"] = dict(getattr(last_trace, "metadata", {}))
+            else:
+                payload["history"] = []
 
-            history_items = list(self._session.history)
-            payload["history"] = [
-                {"speaker": speaker, "text": text}
-                for speaker, text in history_items[-50:]
-            ]
+            payload["sparklines"] = {
+                "score": _render_sparkline(self._score_history),
+                "budget": _render_sparkline(self._budget_history),
+                "acceptance": _render_sparkline(self._accept_history),
+                "verification": _render_sparkline(self._verification_history),
+            }
+
+            training_rows, training_state = self._build_training_payload()
+            payload["training_rows"] = training_rows
+            payload["training"] = training_state
+            payload["filter"] = self._build_filter_payload()
 
             self._cached_payload = payload
+
+    def _build_training_payload(self) -> Tuple[List[Dict[str, str]], Dict[str, object]]:
+        config = getattr(self._session, "config", None)
+        learning_enabled = bool(getattr(config, "learning_enabled", False))
+        buffer_items = len(getattr(self._session, "_learning_buffer", []))
+        buffer_chars = int(getattr(self._session, "_learning_accumulated_chars", 0))
+        last_flush = int(getattr(self._session, "_learning_last_flush_step", 0))
+        proto = getattr(self._session, "proto_lm", None)
+        model_step = int(getattr(proto, "step", 0))
+        runtime_active = bool(getattr(self._session.runtime.action_context, "training_active", False))
+        rows = [
+            {"label": "Learning enabled", "value": "yes" if learning_enabled else "no"},
+            {"label": "Runtime active", "value": "yes" if runtime_active else "no"},
+            {"label": "Buffer items", "value": str(buffer_items)},
+            {"label": "Buffered chars", "value": str(buffer_chars)},
+            {"label": "Last flush step", "value": str(last_flush)},
+            {"label": "Model step", "value": str(model_step)},
+        ]
+        state = {
+            "learning_enabled": learning_enabled,
+            "runtime_active": runtime_active,
+            "buffer_items": buffer_items,
+            "buffer_chars": buffer_chars,
+            "last_flush_step": last_flush,
+            "model_step": model_step,
+        }
+        return rows, state
+
+    def _build_filter_payload(self) -> Dict[str, object]:
+        enabled = False
+        thresholds: Dict[str, Optional[float]] = {}
+        if hasattr(self._session, "is_filter_enabled"):
+            enabled = bool(self._session.is_filter_enabled())
+        filter_obj = getattr(self._session, "_filter", None)
+        if filter_obj is not None:
+            thresholds_obj = getattr(filter_obj, "thresholds", None)
+            if thresholds_obj is not None:
+                thresholds = {
+                    "min_uncertainty": getattr(thresholds_obj, "min_uncertainty", None),
+                    "min_novelty": getattr(thresholds_obj, "min_novelty", None),
+                    "max_drag": getattr(thresholds_obj, "max_drag", None),
+                }
+        return {"enabled": enabled, "thresholds": thresholds}
 
     def snapshot(self) -> Dict[str, object]:
         with self._lock:
@@ -1133,6 +1268,18 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if path == "/eat_food":
             self._handle_eat_food()
             return
+        if path == "/toggle_learning":
+            self._handle_toggle_learning()
+            return
+        if path == "/flush_learning":
+            self._handle_flush_learning()
+            return
+        if path == "/training_active":
+            self._handle_training_active()
+            return
+        if path == "/toggle_filter":
+            self._handle_toggle_filter()
+            return
         self.send_error(HTTPStatus.NOT_FOUND, "Unknown endpoint")
 
     def _handle_utter(self) -> None:
@@ -1150,10 +1297,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if not text:
             self.send_error(HTTPStatus.BAD_REQUEST, "Text is required")
             return
+        session = self.__class__.session
         try:
-            user_metrics = self.__class__.session.process_user_input(text)
+            user_metrics = session.process_user_input(text)
             self.__class__.state.refresh_from_session(metrics=user_metrics)
-            snapshot = self.__class__.session.generate_response()
+            snapshot = session.generate_response()
             self.__class__.state.refresh_from_session(snapshot=snapshot)
         except Exception as exc:  # pragma: no cover - runtime safety
             self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR, f"Conversation error: {exc}")
@@ -1161,6 +1309,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         response = {
             "response": snapshot.response,
             "meta_report": snapshot.metrics.meta_report,
+            "status": "ok",
         }
         self._send_json(response)
 
@@ -1178,7 +1327,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if boundary_idx == -1:
             self.send_error(HTTPStatus.BAD_REQUEST, "Missing multipart boundary")
             return
-        boundary = content_type[boundary_idx + len(boundary_token):]
+        boundary = content_type[boundary_idx + len(boundary_token) :]
         if boundary.startswith('"') and boundary.endswith('"'):
             boundary = boundary[1:-1]
         boundary_bytes = ("--" + boundary).encode("utf-8")
@@ -1192,7 +1341,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
         parts = payload.split(boundary_bytes)
         for part in parts:
-            if not part or part == b"--\r\n" or part == b"--":
+            if not part or part in {b"--\r\n", b"--"}:
                 continue
             header_section, _, body = part.partition(b"\r\n\r\n")
             if not body:
@@ -1203,7 +1352,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             name_marker = "name=\""
             name_start = headers.find(name_marker)
             name_end = headers.find("\"", name_start + len(name_marker)) if name_start != -1 else -1
-            field_name = headers[name_start + len(name_marker): name_end] if name_start != -1 and name_end != -1 else ""
+            field_name = headers[name_start + len(name_marker) : name_end] if name_start != -1 and name_end != -1 else ""
             if "filename=" not in headers:
                 if field_name == "allow_duplicates":
                     value = body.rstrip(b"\r\n--").decode("utf-8", errors="ignore").strip()
@@ -1213,24 +1362,34 @@ class DashboardHandler(BaseHTTPRequestHandler):
             filename_marker = "filename="
             start = headers.find(filename_marker)
             end = headers.find("\r\n", start)
-            filename = headers[start + len(filename_marker): end].strip().strip('"')
+            filename = headers[start + len(filename_marker) : end].strip().strip('"')
             text = body.rstrip(b"\r\n--").decode("utf-8", errors="ignore")
             buffered_files.append((filename or "upload", text))
 
+        session = self.__class__.session
         for filename, text in buffered_files:
-            processed, metrics = self.__class__.session.ingest_text(
+            processed, metrics = session.ingest_text(
                 text,
                 source=filename,
                 allow_duplicates=allow_duplicates,
             )
             segments_total += processed
             if metrics is not None:
-                self.__class__.state.refresh_from_session(snapshot=ConversationSnapshot(metrics=metrics, response="", meta_report=metrics.meta_report, todos=(), generator_description="ingest"))
+                snapshot = ConversationSnapshot(
+                    metrics=metrics,
+                    response="",
+                    meta_report=metrics.meta_report,
+                    todos=tuple(),
+                    generator_description="ingest",
+                )
+                self.__class__.state.refresh_from_session(snapshot=snapshot)
             files_processed.append(filename)
 
+        self.__class__.state.refresh_from_session()
         self._send_json({
             "segments": segments_total,
             "files": files_processed,
+            "status": f"Ingested {segments_total} segment(s)",
         })
 
     def _handle_think(self) -> None:
@@ -1239,7 +1398,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
         runtime = self.__class__.session.runtime
         runtime.introspection.request_reflection(boost=1.0)
-        self._send_json({"status": "queued"})
+        self._send_json({"status": "Reflection queued"})
 
     def _handle_run_gym(self) -> None:
         if self.__class__.state is None or self.__class__.session is None:
@@ -1247,9 +1406,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
         session = self.__class__.session
         result = _run_cot_curriculum(session)
-        if self.__class__.state is not None:
-            self.__class__.state.refresh_from_session()
-        self._send_json(result | {"status": "ok"})
+        self.__class__.state.refresh_from_session()
+        self._send_json(result | {"status": f"Processed {result.get('examples', 0)} examples"})
 
     def _handle_eat_food(self) -> None:
         if self.__class__.state is None or self.__class__.session is None:
@@ -1257,12 +1415,61 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
         session = self.__class__.session
         result = _ingest_food_corpus(session)
-        if self.__class__.state is not None:
-            self.__class__.state.refresh_from_session()
-        self._send_json(result | {"status": "ok"})
+        self.__class__.state.refresh_from_session()
+        self._send_json(result | {"status": "Food corpus digested"})
 
-    def log_message(self, format: str, *args: object) -> None:
-        return  # suppress console spam
+    def _handle_toggle_learning(self) -> None:
+        session = self.__class__.session
+        if self.__class__.state is None or session is None:
+            self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "Dashboard not initialized")
+            return
+        current = bool(getattr(session.config, "learning_enabled", False))
+        session.config.learning_enabled = not current
+        status = "Learning enabled" if session.config.learning_enabled else "Learning disabled"
+        self.__class__.state.refresh_from_session()
+        self._send_json({"status": status})
+
+    def _handle_flush_learning(self) -> None:
+        session = self.__class__.session
+        if self.__class__.state is None or session is None:
+            self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "Dashboard not initialized")
+            return
+        buffered = len(getattr(session, "_learning_buffer", []))
+        try:
+            session._maybe_train_on_buffer()  # type: ignore[attr-defined]
+        except Exception as exc:  # pragma: no cover - runtime safety
+            self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR, f"Training error: {exc}")
+            return
+        self.__class__.state.refresh_from_session()
+        self._send_json({"status": f"Flushed {buffered} buffered chunk(s)"})
+
+    def _handle_training_active(self) -> None:
+        session = self.__class__.session
+        if self.__class__.state is None or session is None:
+            self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "Dashboard not initialized")
+            return
+        runtime = session.runtime
+        current = bool(getattr(runtime.action_context, "training_active", False))
+        runtime.set_training_active(not current)
+        self.__class__.state.refresh_from_session()
+        status = "Training active" if not current else "Training idle"
+        self._send_json({"status": status})
+
+    def _handle_toggle_filter(self) -> None:
+        session = self.__class__.session
+        if self.__class__.state is None or session is None:
+            self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "Dashboard not initialized")
+            return
+        current = bool(session.is_filter_enabled()) if hasattr(session, "is_filter_enabled") else False
+        toggle_target = not current
+        if hasattr(session, "_set_filter_enabled"):
+            session._set_filter_enabled(toggle_target)  # type: ignore[attr-defined]
+        self.__class__.state.refresh_from_session()
+        status = "Ingest filter enabled" if toggle_target else "Ingest filter bypassed"
+        self._send_json({"status": status})
+
+    def log_message(self, format: str, *args: object) -> None:  # pragma: no cover - silence
+        return
 
     def _send_html(self, html: str) -> None:
         encoded = html.encode("utf-8")
@@ -1280,7 +1487,6 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
         self.wfile.write(encoded)
-
 
 def run_dashboard(
     *,
@@ -1339,6 +1545,7 @@ def run_dashboard_from_session(
         pass
     finally:
         unsubscribe()
+
 
 def main() -> None:
     parser = argparse.ArgumentParser()
