@@ -170,7 +170,13 @@ class ProtoLanguageModel(nn.Module):
             self.vocab.build_from_statistics(stats, merges=self.config.vocab_merges)
         self._ensure_capacity(self.vocab.size())
 
-    def encode(self, text: str) -> List[int]:
+    def encode(self, text: str, *, mutate: bool = True) -> List[int]:
+        if not mutate:
+            ids = self.vocab.encode_ids_readonly(text)
+            if self.eos_token_id is None and self.eos_token in self.vocab.token_to_id:
+                self.eos_token_id = self.vocab.token_to_id[self.eos_token]
+            return ids
+
         prev_size = self.vocab.size()
         ids = self.vocab.encode_ids(text)
         new_size = self.vocab.size()
@@ -243,7 +249,7 @@ class ProtoLanguageModel(nn.Module):
         was_training = self.training
         self.eval()
 
-        prefix_ids = self.encode(prefix)
+        prefix_ids = self.encode(prefix, mutate=False)
         if not prefix_ids:
             prefix_ids = [0]
         generated = torch.tensor(prefix_ids, device=self.device, dtype=torch.long)
