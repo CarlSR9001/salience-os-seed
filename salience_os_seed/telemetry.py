@@ -23,6 +23,13 @@ class ParameterEvent(TelemetryEvent):
     kind: str = "structural"
 
 
+@dataclass(frozen=True)
+class SpatialEvent(TelemetryEvent):
+    """Telemetry event for 4D spatial reasoning updates."""
+
+    type: str = "spatial/update"
+
+
 class TelemetryBus:
     """Thread-safe pub/sub bus for telemetry events."""
 
@@ -84,6 +91,22 @@ def render_parameter_event(event: ParameterEvent) -> str:
     colour = ANSI_GREEN if delta_int > 0 else ANSI_RED if delta_int < 0 else ANSI_BLUE
     delta_str = f"{delta_int:+d}" if isinstance(delta_int, int) else str(delta)
     return f"[telemetry] step={step} params={total} Δ={colour_text(delta_str, colour)}"
+
+
+def render_spatial_event(event: SpatialEvent) -> str:
+    payload = event.payload
+    space = payload.get("space", "?")
+    summary = payload.get("summary", "")
+    path = payload.get("path", {})
+    ascii_map = payload.get("ascii") or ""
+    if not ascii_map and isinstance(path, Mapping):
+        ascii_map = path.get("ascii")
+    header = f"space={space}"
+    if summary:
+        header += f" | {summary}"
+    if ascii_map:
+        return f"[spatial] {header}\n{ascii_map}"
+    return f"[spatial] {header}"
 
 
 def render_training_event(event: TelemetryEvent) -> Iterator[str]:
