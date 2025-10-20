@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import shutil
 import time
 from collections import Counter, deque
 from dataclasses import asdict, dataclass, field
@@ -12,7 +11,6 @@ from pathlib import Path
 from typing import Callable, Deque, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
-from datetime import datetime, timezone
 
 from ..core.memory import StructuredMemory
 from ..core.operators import MemoryOperator
@@ -87,7 +85,7 @@ class ConversationSession:
         self.proto_lm = ProtoLanguageModel(self.config.lm, learning_enabled=self.config.learning_enabled)
         loaded_checkpoint = self.proto_lm.load_checkpoint()
         if self.config.archive_checkpoint_on_start and loaded_checkpoint:
-            self._archive_existing_checkpoint()
+            self._snapshot_existing_checkpoint()
         self.memory_operator = MemoryOperator(self.runtime.memory)
         self.history: Deque[Tuple[str, str]] = deque(maxlen=self.config.max_history)
         self.reader: Optional[CorpusReader] = None
@@ -157,24 +155,21 @@ class ConversationSession:
     def is_filter_enabled(self) -> bool:
         return bool(self._filter.thresholds.enabled)
 
-    def _archive_existing_checkpoint(self) -> None:
-        checkpoint_path = self.config.lm.checkpoint_path
-        if not checkpoint_path:
-            return
-        path = Path(checkpoint_path)
-        if not path.exists():
-            return
-        if path.parent.name.startswith("checkpoints_"):
-            return
-        archive_dir = path.parent / "checkpoints_old"
-        archive_dir.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-        target = archive_dir / f"{path.stem}-{timestamp}{path.suffix or '.pt'}"
+    def _snapshot_existing_checkpoint(self) -> None:
         try:
-            shutil.move(str(path), str(target))
-        except OSError:
-            # If move fails, leave original in place rather than crash startup.
+            self.proto_lm.create_checkpoint_record(
+                reason="startup-snapshot",
+                tags=["startup"],
+                auto_evaluate=False,
+                promote=True,
+                verdict="startup",
+            )
+        except Exception:
             return
+
+    def attach_mcp_tool_client(self, client) -> None:
+        session = self.runtime.attach_mcp_tool_client(client)
+        self.proto_lm.attach_mcp_session(session)
 
     def bootstrap_from_corpus(
         self,
@@ -373,7 +368,13 @@ class ConversationSession:
         target.parent.mkdir(parents=True, exist_ok=True)
         checkpoint_path: Optional[str] = None
         if self.proto_lm.config.checkpoint_path:
-            checkpoint_path = str(self.proto_lm.save_checkpoint())
+            checkpoint_path = str(
+                self.proto_lm.save_checkpoint(
+                    reason="state-save",
+                    metadata={"source": "conversation_state"},
+                    tags=["conversation"],
+                )
+            )
         adaptive_state = self._adaptive.export_state()
         payload = {
             "history": list(self.history),

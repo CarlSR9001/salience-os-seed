@@ -289,12 +289,15 @@ class MCPToolSession:
     def __init__(self, client) -> None:
         self.client = client
 
-    def invoke(self, tool_name: str, state: Mapping[str, object]) -> bool:
+    def call(self, tool_name: str, state: Mapping[str, object]) -> object | None:
         try:
-            self.client.call_tool(tool_name, state)
-            return True
+            return self.client.call_tool(tool_name, state)
         except Exception:
-            return False
+            return None
+
+    def invoke(self, tool_name: str, state: Mapping[str, object]) -> bool:
+        result = self.call(tool_name, state)
+        return result is not None
 
 
 __all__ = [

@@ -225,8 +225,10 @@ class SalienceRuntime:
 
         self.action_context.training_active = bool(active)
 
-    def attach_mcp_tool_client(self, client) -> None:
-        self.tool_adapter.register_mcp_session(MCPToolSession(client))
+    def attach_mcp_tool_client(self, client) -> MCPToolSession:
+        session = MCPToolSession(client)
+        self.tool_adapter.register_mcp_session(session)
+        return session
 
     def mcp_resources(self) -> Mapping[str, object]:
         return {

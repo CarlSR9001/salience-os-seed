@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+from typing import Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple, TYPE_CHECKING
 
 import torch
 import torch.nn as nn
@@ -16,6 +16,10 @@ import math
 from ..core.operators.sass import SASSConfig, SASSCore
 from ..runtime.health.grads import grad_health
 from ..telemetry import BUS, ParameterEvent, TelemetryEvent
+from .checkpoints import CheckpointManager, CheckpointRecord
+
+if TYPE_CHECKING:
+    from ..runtime.action_executor import MCPToolSession
 from .vocab import Vocabulary
 from .modules import ModuleBlueprint, ModuleManager
 
@@ -32,6 +36,12 @@ class TrainingConfig:
     seed: int = 13
     grad_clip: float = 1.0
     checkpoint_path: Optional[str] = "storage/proto_lm/proto_lm.pt"
+    checkpoint_repository: Optional[str] = "storage/proto_lm/checkpoints"
+    auto_evaluate_checkpoints: bool = False
+    checkpoint_evaluation_tool: Optional[str] = None
+    checkpoint_evaluation_suite: Optional[str] = None
+    checkpoint_promotion_metric: Optional[str] = None
+    checkpoint_metric_higher_is_better: bool = True
     device: str = "cpu"  # "cpu", "cuda", or "auto"
     dedupe_enabled: bool = True
     dedupe_interval: int = 250
@@ -129,6 +139,17 @@ class ProtoLanguageModel(nn.Module):
         self._training_observers: List[Callable[[Dict[str, object]], None]] = []
         self._external_state_exporter: Optional[Callable[[], Dict[str, object]]] = None
         self._external_state_importer: Optional[Callable[[Dict[str, object]], None]] = None
+        repo_root = self._resolve_checkpoint_root()
+        active_path = Path(self.config.checkpoint_path).expanduser() if self.config.checkpoint_path else None
+        self.checkpoint_manager = CheckpointManager(
+            repo_root,
+            active_path=active_path,
+            evaluation_tool=self.config.checkpoint_evaluation_tool,
+            evaluation_suite=self.config.checkpoint_evaluation_suite,
+            promotion_metric=self.config.checkpoint_promotion_metric,
+            metric_higher_is_better=self.config.checkpoint_metric_higher_is_better,
+            auto_evaluate=self.config.auto_evaluate_checkpoints,
+        )
 
     # ------------------------------------------------------------------
     # Configuration helpers
@@ -563,37 +584,74 @@ class ProtoLanguageModel(nn.Module):
     # ------------------------------------------------------------------
     # Checkpoints
     # ------------------------------------------------------------------
-    def save_checkpoint(self, path: Optional[str] = None) -> Optional[Path]:
-        target = Path(path or self.config.checkpoint_path) if self.config.checkpoint_path or path else None
-        if not target:
-            return None
-        target.parent.mkdir(parents=True, exist_ok=True)
-        payload = {
-            "model": self.state_dict(),
-            "optimizer": self.optimizer.state_dict(),
-            "step": self.step,
-            "vocab": {
-                "tokens": self.vocab.tokens,
-                "merges": self.vocab.merges,
-            },
-        }
-        if self.lr_scheduler is not None:
-            payload["scheduler"] = self.lr_scheduler.state_dict()
-        if self._external_state_exporter is not None:
-            try:
-                external_state = self._external_state_exporter()
-            except Exception:
-                external_state = None
-            if external_state is not None:
-                payload["external_state"] = external_state
-        torch.save(payload, target)
-        return target
+    def save_checkpoint(
+        self,
+        path: Optional[str] = None,
+        *,
+        reason: str = "manual",
+        metadata: Optional[Mapping[str, object]] = None,
+        tags: Optional[Sequence[str]] = None,
+        evaluation_suite: Optional[str] = None,
+        auto_evaluate: Optional[bool] = None,
+    ) -> Optional[Path]:
+        payload = self._build_checkpoint_payload()
+        external_path = Path(path).expanduser() if path else None
+        record = self.checkpoint_manager.create_checkpoint(
+            payload,
+            step=self.step,
+            reason=reason,
+            tags=tags,
+            extra_metadata=metadata,
+            external_path=external_path,
+            auto_evaluate=auto_evaluate,
+        )
+        should_auto = self.config.auto_evaluate_checkpoints if auto_evaluate is None else auto_evaluate
+        if evaluation_suite or should_auto:
+            self.checkpoint_manager.auto_evaluate_record(
+                record,
+                override_suite=evaluation_suite,
+                force=bool(evaluation_suite) or bool(should_auto),
+            )
+        return external_path or record.payload_path
+
+    def create_checkpoint_record(
+        self,
+        *,
+        reason: str,
+        metadata: Optional[Mapping[str, object]] = None,
+        tags: Optional[Sequence[str]] = None,
+        auto_evaluate: Optional[bool] = None,
+        promote: bool = False,
+        verdict: Optional[str] = None,
+    ) -> CheckpointRecord:
+        record = self.checkpoint_manager.create_checkpoint(
+            self._build_checkpoint_payload(),
+            step=self.step,
+            reason=reason,
+            tags=tags,
+            extra_metadata=metadata,
+            auto_evaluate=auto_evaluate,
+        )
+        if promote:
+            self.checkpoint_manager.promote(record.identifier, verdict=verdict)
+        return record
 
     def load_checkpoint(self, path: Optional[str] = None) -> bool:
-        target = Path(path or self.config.checkpoint_path) if self.config.checkpoint_path or path else None
-        if not target or not target.exists():
+        target_path: Optional[Path]
+        if path:
+            target_path = Path(path)
+        else:
+            resolved = self.checkpoint_manager.resolve_load_path()
+            if resolved is None:
+                target_path = Path(self.config.checkpoint_path) if self.config.checkpoint_path else None
+            else:
+                target_path = resolved
+        if not target_path or not target_path.exists():
             return False
-        payload = torch.load(target, map_location=self.device)
+        payload = torch.load(target_path, map_location=self.device)
+        matched_record = None
+        if not path:
+            matched_record = self.checkpoint_manager.find_by_payload(target_path)
         self.vocab.tokens = payload["vocab"]["tokens"]
         self.vocab.merges = payload["vocab"]["merges"]
         self.vocab._refresh_index()
@@ -651,7 +709,51 @@ class ProtoLanguageModel(nn.Module):
                 self._external_state_importer(external_state)
             except Exception:
                 pass
+        if matched_record is not None:
+            self.checkpoint_manager.promote(matched_record.identifier, verdict="loaded")
+        elif not path:
+            record = self.checkpoint_manager.create_checkpoint(
+                self._build_checkpoint_payload(),
+                step=self.step,
+                reason="post-load-snapshot",
+                tags=["imported"],
+                auto_evaluate=False,
+            )
+            self.checkpoint_manager.promote(record.identifier, verdict="imported")
         return True
+
+    def attach_mcp_session(self, session: "MCPToolSession") -> None:
+        self.checkpoint_manager.attach_mcp_session(session)
+
+    def _build_checkpoint_payload(self) -> Dict[str, object]:
+        payload: Dict[str, object] = {
+            "model": self.state_dict(),
+            "optimizer": self.optimizer.state_dict(),
+            "step": self.step,
+            "vocab": {
+                "tokens": self.vocab.tokens,
+                "merges": self.vocab.merges,
+            },
+        }
+        if self.lr_scheduler is not None:
+            payload["scheduler"] = self.lr_scheduler.state_dict()
+        if self._external_state_exporter is not None:
+            try:
+                external_state = self._external_state_exporter()
+            except Exception:
+                external_state = None
+            if external_state is not None:
+                payload["external_state"] = external_state
+        return payload
+
+    def _resolve_checkpoint_root(self) -> Path:
+        configured = self.config.checkpoint_repository
+        if configured:
+            return Path(configured).expanduser()
+        if self.config.checkpoint_path:
+            path = Path(self.config.checkpoint_path).expanduser()
+            return path.parent / "checkpoints"
+        return Path("storage/proto_lm/checkpoints")
 
     # ------------------------------------------------------------------
     # Adaptive observation hooks
@@ -746,7 +848,8 @@ class ProtoLanguageModel(nn.Module):
                     "total": current,
                     "delta": delta,
                     "model": "proto_lm",
-                }
+                },
+                kind="structural",
             )
         )
 
@@ -763,11 +866,11 @@ class ProtoLanguageModel(nn.Module):
         }
         BUS.publish(TelemetryEvent(type="training/step", payload=payload))
         ParameterEventPayload = {
-            "delta": grads[0][1] if grads else 0.0,
+            "first_norm": grads[0][1] if grads else 0.0,
             "total": self._parameter_total,
             "step": self.step,
         }
-        BUS.publish(ParameterEvent(payload=ParameterEventPayload))
+        BUS.publish(ParameterEvent(payload=ParameterEventPayload, kind="gradient"))
         if snapshot is not None:
             BUS.publish(
                 TelemetryEvent(
