@@ -1,0 +1,158 @@
+{
+  "aggregates": [
+    {
+      "benchmark": "GRIND",
+      "ci95": {
+        "num_questions": [
+          2.0,
+          2.0
+        ],
+        "success_rate": [
+          1.0,
+          1.0
+        ]
+      },
+      "mean": {
+        "num_questions": 2.0,
+        "success_rate": 1.0
+      },
+      "std": {
+        "num_questions": 0.0,
+        "success_rate": 0.0
+      }
+    },
+    {
+      "benchmark": "AIME_2024",
+      "ci95": {
+        "accuracy": [
+          1.0,
+          1.0
+        ],
+        "num_questions": [
+          3.0,
+          3.0
+        ]
+      },
+      "mean": {
+        "accuracy": 1.0,
+        "num_questions": 3.0
+      },
+      "std": {
+        "accuracy": 0.0,
+        "num_questions": 0.0
+      }
+    },
+    {
+      "benchmark": "GPQA",
+      "ci95": {
+        "accuracy": [
+          1.0,
+          1.0
+        ],
+        "num_questions": [
+          3.0,
+          3.0
+        ]
+      },
+      "mean": {
+        "accuracy": 1.0,
+        "num_questions": 3.0
+      },
+      "std": {
+        "accuracy": 0.0,
+        "num_questions": 0.0
+      }
+    },
+    {
+      "benchmark": "SWE_bench",
+      "ci95": {
+        "num_instances": [
+          2.0,
+          2.0
+        ],
+        "success_rate": [
+          1.0,
+          1.0
+        ]
+      },
+      "mean": {
+        "num_instances": 2.0,
+        "success_rate": 1.0
+      },
+      "std": {
+        "num_instances": 0.0,
+        "success_rate": 0.0
+      }
+    },
+    {
+      "benchmark": "MATH_500",
+      "ci95": {
+        "accuracy": [
+          1.0,
+          1.0
+        ],
+        "num_questions": [
+          3.0,
+          3.0
+        ]
+      },
+      "mean": {
+        "accuracy": 1.0,
+        "num_questions": 3.0
+      },
+      "std": {
+        "accuracy": 0.0,
+        "num_questions": 0.0
+      }
+    },
+    {
+      "benchmark": "BFCL",
+      "ci95": {
+        "num_tasks": [
+          2.0,
+          2.0
+        ],
+        "success_rate": [
+          1.0,
+          1.0
+        ]
+      },
+      "mean": {
+        "num_tasks": 2.0,
+        "success_rate": 1.0
+      },
+      "std": {
+        "num_tasks": 0.0,
+        "success_rate": 0.0
+      }
+    },
+    {
+      "benchmark": "Aider_Polyglot",
+      "ci95": {
+        "num_tasks": [
+          2.0,
+          2.0
+        ],
+        "success_rate": [
+          1.0,
+          1.0
+        ]
+      },
+      "mean": {
+        "num_tasks": 2.0,
+        "success_rate": 1.0
+      },
+      "std": {
+        "num_tasks": 0.0,
+        "success_rate": 0.0
+      }
+    }
+  ],
+  "generated_at": "20251020T220236Z",
+  "model": {
+    "checkpoint_path": null,
+    "generation_kwargs": null,
+    "name": "local-stub",
+    "revision": null
+  }
+}

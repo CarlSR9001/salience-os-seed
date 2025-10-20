@@ -1,0 +1,26 @@
+{
+  "benchmarks": [
+    "GRIND",
+    "AIME_2024",
+    "GPQA",
+    "SWE_bench",
+    "MATH_500",
+    "BFCL",
+    "Aider_Polyglot"
+  ],
+  "harness_version": "0.1.0",
+  "local_only": true,
+  "model": {
+    "checkpoint_path": null,
+    "generation_kwargs": null,
+    "name": "local-stub",
+    "revision": null
+  },
+  "seeds": [
+    101,
+    202,
+    303,
+    404,
+    505
+  ]
+}
