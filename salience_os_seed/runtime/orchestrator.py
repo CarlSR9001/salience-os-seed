@@ -541,27 +541,39 @@ class SalienceRuntime:
             return decision
         if action.operator is ControllerOperator.SASS and action.cot_depth < 2:
             patched_action = ControllerAction(cot_depth=2, operator=ControllerOperator.REFLECT, patch=action.patch)
-            return ControllerDecision(
+            patched_decision = ControllerDecision(
                 action=patched_action,
                 score=decision.score,
                 salience_mapping=decision.salience_mapping,
                 cooldown_steps=decision.cooldown_steps,
                 hysteresis_delta=decision.hysteresis_delta,
             )
+            self._sync_controller_state_with_decision(patched_decision)
+            return patched_decision
         if action.operator not in {ControllerOperator.REFLECT, ControllerOperator.VERIFY} and not allow_train:
             patched_action = ControllerAction(
                 cot_depth=max(action.cot_depth, 2),
                 operator=ControllerOperator.REFLECT,
                 patch=ControllerPatch.NONE,
             )
-            return ControllerDecision(
+            patched_decision = ControllerDecision(
                 action=patched_action,
                 score=decision.score,
                 salience_mapping=decision.salience_mapping,
                 cooldown_steps=decision.cooldown_steps,
                 hysteresis_delta=decision.hysteresis_delta,
             )
+            self._sync_controller_state_with_decision(patched_decision)
+            return patched_decision
         return decision
+
+    def _sync_controller_state_with_decision(self, decision: ControllerDecision) -> None:
+        """Align controller state to a patched decision."""
+
+        state = self.controller.state
+        state.last_action = decision.action
+        state.last_score = decision.score
+        state.cooldown_remaining = decision.cooldown_steps
 
     def _should_allow_training(
         self,
