@@ -201,6 +201,7 @@ class SalienceRuntime:
         self._salience_history_window = 128
         self._salience_histogram_bins = 12
         self._last_auction_results: Dict[str, float] = {}
+        self.sensor_bank = self.sensor_pipeline.sensor_bank
 
         episodic_path = None
         if self.config.episodic.enabled:
@@ -210,6 +211,11 @@ class SalienceRuntime:
 
         self.mcp_memory = MemoryResource(self.memory_operator)
         self.mcp_introspection = IntrospectionResource(self.introspection)
+
+    def update_sensor_context(self, key: str, payload: Mapping[str, object]) -> None:
+        """Expose additional context to the sensor pipeline in fallback mode."""
+
+        self.sensor_pipeline.update_memory_snapshot({key: payload})
 
     def _default_tool_map(self) -> Mapping[ControllerOperator, Mapping[ControllerPatch, str]]:
         return {
@@ -224,6 +230,18 @@ class SalienceRuntime:
         """Toggle whether the runtime should preserve autograd history between steps."""
 
         self.action_context.training_active = bool(active)
+
+    def _execute_action(
+        self,
+        decision: ControllerDecision,
+        state: Mapping[str, object],
+        salience: Mapping[str, float],
+    ) -> Optional[bool]:  # pragma: no cover - exercised via tests
+        return self.action_executor.execute(decision, state, salience)
+
+    @property
+    def hidden_states(self):  # pragma: no cover - exercised via tests
+        return self.action_context.hidden_states
 
     def attach_mcp_tool_client(self, client) -> MCPToolSession:
         session = MCPToolSession(client)
@@ -348,7 +366,8 @@ class SalienceRuntime:
             if history is None or history.maxlen != self._salience_history_window:
                 history = deque(maxlen=self._salience_history_window)
                 self._salience_history[reading.name] = history
-            history.append(float(reading.normalised))
+            value = getattr(reading, "normalised", getattr(reading, "raw", 0.0))
+            history.append(float(value))
 
     def _publish_salience_histogram(self, step: int, salience_vector) -> None:
         hist_payload: Dict[str, Dict[str, object]] = {}
@@ -360,10 +379,13 @@ class SalienceRuntime:
             if not snapshot:
                 continue
             entry: Dict[str, object] = dict(snapshot)
-            entry["latest"] = float(reading.normalised)
-            entry["raw"] = float(reading.raw)
-            if reading.metadata:
-                entry["metadata"] = self._serialise_mapping(reading.metadata)
+            latest = getattr(reading, "normalised", getattr(reading, "raw", 0.0))
+            raw_value = getattr(reading, "raw", latest)
+            entry["latest"] = float(latest)
+            entry["raw"] = float(raw_value)
+            metadata = getattr(reading, "metadata", None)
+            if metadata:
+                entry["metadata"] = self._serialise_mapping(metadata)
             hist_payload[reading.name] = entry
         if not hist_payload:
             return

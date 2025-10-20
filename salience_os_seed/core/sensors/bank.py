@@ -51,7 +51,6 @@ class SensorBank:
         normaliser.register_baseline("progress", [-0.5, 0.0, 0.5, 1.0])
         normaliser.register_baseline("cost", [20.0, 40.0, 80.0, 120.0])
         normaliser.register_baseline("drag", [0.0, 0.3, 0.6, 1.0])
-        normaliser.register_baseline("truth", [0.2, 0.4, 0.6, 0.85])
         normaliser.register_baseline("coherence", [0.3, 0.6, 0.8, 1.0])
         from .uncertainty import UncertaintySensor
         from .novelty import NoveltySensor
@@ -60,7 +59,6 @@ class SensorBank:
         from .cost import CostSensor
         from .drag import DragSensor
         from .coherence import CoherenceSensor
-        from .truth import TruthSensor
 
         sensors: List[Sensor] = [
             UncertaintySensor(normaliser=normaliser),
@@ -69,7 +67,6 @@ class SensorBank:
             ProgressSensor(normaliser=normaliser),
             CostSensor(normaliser=normaliser),
             DragSensor(normaliser=normaliser),
-            TruthSensor(normaliser=normaliser),
             CoherenceSensor(normaliser=normaliser),
         ]
         return cls(sensors)

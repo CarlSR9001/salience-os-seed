@@ -27,7 +27,7 @@ def evaluate_scratchpad_trace(
     """
 
     if not trace:
-        return True, {"coherence": 0.0, "grounding": 0.0, "utility": 0.0, "length": 0.0}
+        return False, {"coherence": 0.0, "grounding": 0.0, "utility": 0.0, "length": 0.0}
 
     connectors = {"because", "therefore", "thus", "however", "but", "so", "since"}
     connector_hits = 0

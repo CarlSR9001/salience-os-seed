@@ -4,9 +4,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Dict, Mapping, MutableMapping
+
+try:  # pragma: no cover - optional dependency
+    import torch
+except ModuleNotFoundError:  # pragma: no cover
+    torch = None  # type: ignore
+
+if getattr(torch, "__SALIENT_STUB__", False):  # pragma: no cover
+    torch = None  # type: ignore
+
 from ..core.sensors import SensorBank
 from ..core.reflection import Scratchpad
-import torch
 
 
 @dataclass(slots=True)
@@ -37,7 +45,7 @@ class SensorPipeline:
         state: Mapping[str, object],
         *,
         scratchpad: Scratchpad,
-        hidden_states: torch.Tensor | None,
+        hidden_states,
         controller_last_action,
     ) -> Dict[str, object]:
         enriched: Dict[str, object] = dict(state)
@@ -58,7 +66,9 @@ class SensorPipeline:
         return enriched
 
     @staticmethod
-    def _hidden_embedding_vector(tensor: torch.Tensor) -> object:
+    def _hidden_embedding_vector(tensor) -> object:
+        if torch is None:
+            return []
         try:
             return tensor.detach().cpu().numpy().flatten()[-256:]
         except Exception:  # pragma: no cover - defensive

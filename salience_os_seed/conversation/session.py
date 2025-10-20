@@ -353,7 +353,7 @@ class ConversationSession:
         if (
             self.config.learning_enabled
             and self._learning_last_flush_step != self.proto_lm.step
-        ):
+        ) or self._auto_save_path:
             self._maybe_autosave()
         return ConversationSnapshot(
             metrics=metrics,
