@@ -26,13 +26,19 @@ python -m salience_os_seed.runtime.ui.cli --generator baseline
 - **a**: toggle auto-run.
 - **m**: inject a sample todo into structured memory.
 - **s**: cycle the active state generator.
+- **g `<key>`**: switch directly to a generator by key (see the "Generators" panel for options).
+- **r**: reset the runtime (clears history and restarts the orchestrator).
+- **h** or **?**: show the command palette in the message feed.
 - **q**: quit the dashboard.
 
 ## Observing Outputs
 Each step surfaces:
-- Meta-state self-report line (confidence/difficulty/ROI).
+- Meta-state self-report line with generator details and auto-run state.
 - Controller decision tuple, score, hysteresis delta, cooldown.
-- Scheduler event list and budget ratio.
-- Todos table showing structured memory edits.
+- Scheduler event list, budget ratio, and sparklines for budget + verification trends.
+- Salience channel magnitudes (top contributors).
+- Recent step timeline with verification outcomes.
+- Todos table showing structured memory edits, plus maintenance and experiment summaries.
+- Command legend, generator roster, and rolling message feed so you always know what changed.
 
-Rich mode renders panels/tables; plain mode prints concise text blocks.
+Rich mode renders multi-panel layouts; plain mode mirrors the same structure with wrapped tables and headings.
