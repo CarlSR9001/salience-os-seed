@@ -170,7 +170,13 @@ class ProtoLanguageModel(nn.Module):
             self.vocab.build_from_statistics(stats, merges=self.config.vocab_merges)
         self._ensure_capacity(self.vocab.size())
 
-    def encode(self, text: str) -> List[int]:
+    def encode(self, text: str, *, mutate: bool = True) -> List[int]:
+        if not mutate:
+            ids = self.vocab.encode_ids_readonly(text)
+            if self.eos_token_id is None and self.eos_token in self.vocab.token_to_id:
+                self.eos_token_id = self.vocab.token_to_id[self.eos_token]
+            return ids
+
         prev_size = self.vocab.size()
         ids = self.vocab.encode_ids(text)
         new_size = self.vocab.size()
@@ -193,6 +199,8 @@ class ProtoLanguageModel(nn.Module):
         target = size + reserve
         if target % chunk != 0:
             target = ((target // chunk) + 1) * chunk
+        old_params: Dict[str, nn.Parameter] = dict(self.named_parameters())
+
         new_embed = nn.Embedding(target, self.config.embed_dim).to(self.device)
         new_embed.weight.data[:current] = self.embed.weight.data
         tail = new_embed.weight.data[current:]
@@ -208,7 +216,7 @@ class ProtoLanguageModel(nn.Module):
         self.output = new_output
         self._tie_weights_if_possible()
         self.loss_fn = nn.CrossEntropyLoss()
-        self._reset_optimizer()
+        self._reset_optimizer(old_params=old_params)
         self._resize_importance_tracker(target)
         self.module_manager.on_vocab_expand(new_size=target, delta=target - current)
         init_std = float(tail.std().detach().cpu().item()) if tail.numel() else 0.0
@@ -243,7 +251,7 @@ class ProtoLanguageModel(nn.Module):
         was_training = self.training
         self.eval()
 
-        prefix_ids = self.encode(prefix)
+        prefix_ids = self.encode(prefix, mutate=False)
         if not prefix_ids:
             prefix_ids = [0]
         generated = torch.tensor(prefix_ids, device=self.device, dtype=torch.long)
@@ -429,24 +437,33 @@ class ProtoLanguageModel(nn.Module):
         self._notify_training_observers(snapshot)
         return loss_value
 
-    def _reset_optimizer(self) -> None:
+    def _reset_optimizer(self, *, old_params: Optional[Mapping[str, nn.Parameter]] = None) -> None:
         lr = self.config.learning_rate
         embed_param = self.embed.weight
         seen: set[int] = set()
-        other_params: List[nn.Parameter] = []
-        for _, param in self.named_parameters():
-            if param is embed_param:
-                continue
+        other_params: List[Tuple[str, nn.Parameter]] = []
+        embed_name = "embed.weight"
+        for name, param in self.named_parameters():
             pid = id(param)
             if pid in seen:
                 continue
             seen.add(pid)
-            other_params.append(param)
+            if param is embed_param:
+                embed_name = name
+                continue
+            other_params.append((name, param))
 
         param_groups = []
         if other_params:
-            param_groups.append({"params": other_params, "lr": lr})
+            param_groups.append({"params": [param for _, param in other_params], "lr": lr})
         param_groups.append({"params": [embed_param], "lr": lr})
+
+        old_optimizer: Optional[torch.optim.Optimizer] = getattr(self, "optimizer", None)
+        old_group_metadata: List[Dict[str, object]] = []
+        if old_optimizer is not None:
+            for group in old_optimizer.param_groups:
+                meta = {key: value for key, value in group.items() if key != "params"}
+                old_group_metadata.append(meta)
 
         self.optimizer = torch.optim.AdamW(
             param_groups,
@@ -460,26 +477,88 @@ class ProtoLanguageModel(nn.Module):
             patience=self.config.scheduler_patience,
             threshold=self.config.scheduler_threshold,
         )
+
+        embed_group_index = len(self.optimizer.param_groups) - 1
+        for idx, group in enumerate(self.optimizer.param_groups):
+            if idx < len(old_group_metadata):
+                for key, value in old_group_metadata[idx].items():
+                    group[key] = value
+            group.setdefault("_lr_multiplier", 1.0)
+            group.setdefault("_cooldown_steps", 0)
+            group.setdefault("initial_lr", group.get("lr", lr))
+
         if not hasattr(self, "_pending_lr_restore"):
             self._pending_lr_restore = {}
         else:
             self._pending_lr_restore.clear()
-        if self.config.vocab_lr_multiplier < 1.0 and self.optimizer.param_groups:
-            embed_idx = len(self.optimizer.param_groups) - 1
-            embed_group = self.optimizer.param_groups[embed_idx]
-            embed_group.setdefault("_lr_multiplier", 1.0)
-            embed_group.setdefault("_cooldown_steps", 0)
-            multiplier = float(self.config.vocab_lr_multiplier)
-            cooldown = max(0, self.config.vocab_lr_cooldown_steps)
-            if multiplier < 1.0 and cooldown > 0:
-                embed_group["_lr_multiplier"] = multiplier
-                embed_group["_cooldown_steps"] = cooldown
-                self._pending_lr_restore[embed_idx] = {"steps": cooldown}
-            else:
-                embed_group["_lr_multiplier"] = 1.0
-        for group in self.optimizer.param_groups:
-            group.setdefault("_lr_multiplier", 1.0)
-            group.setdefault("_cooldown_steps", 0)
+
+        multiplier = float(self.config.vocab_lr_multiplier)
+        cooldown = max(0, int(self.config.vocab_lr_cooldown_steps))
+        embed_group = self.optimizer.param_groups[embed_group_index]
+        if multiplier < 1.0 and cooldown > 0:
+            embed_group["_lr_multiplier"] = multiplier
+            embed_group["_cooldown_steps"] = cooldown
+            self._pending_lr_restore[embed_group_index] = {"steps": cooldown}
+        else:
+            embed_group["_lr_multiplier"] = float(embed_group.get("_lr_multiplier", 1.0))
+            embed_group["_cooldown_steps"] = max(0, int(embed_group.get("_cooldown_steps", 0)))
+            if embed_group["_cooldown_steps"] > 0:
+                self._pending_lr_restore[embed_group_index] = {"steps": embed_group["_cooldown_steps"]}
+
+        for idx, group in enumerate(self.optimizer.param_groups):
+            group.setdefault("base_lr", group.get("lr", lr))
+            steps = int(group.get("_cooldown_steps", 0))
+            if steps > 0 and idx not in self._pending_lr_restore:
+                self._pending_lr_restore[idx] = {"steps": steps}
+
+        if old_optimizer is not None:
+            self._migrate_optimizer_slots(
+                new_optimizer=self.optimizer,
+                old_optimizer=old_optimizer,
+                param_sequence=other_params + [(embed_name, embed_param)],
+                old_params=old_params,
+            )
+
+    def _resize_optimizer_tensor(self, source: torch.Tensor, reference: torch.Tensor) -> torch.Tensor:
+        if source.shape == reference.shape:
+            return source.to(dtype=reference.dtype, device=reference.device).clone()
+        if source.dim() == 0 and reference.dim() == 0:
+            return source.to(dtype=reference.dtype, device=reference.device)
+        result = torch.zeros(reference.shape, dtype=reference.dtype, device=reference.device)
+        dims = min(source.dim(), reference.dim())
+        if dims == 0:
+            return result
+        slices = tuple(slice(0, min(source.size(dim), reference.size(dim))) for dim in range(dims))
+        result[slices] = source[slices].to(dtype=reference.dtype, device=reference.device)
+        return result
+
+    def _migrate_optimizer_slots(
+        self,
+        *,
+        new_optimizer: torch.optim.Optimizer,
+        old_optimizer: torch.optim.Optimizer,
+        param_sequence: Sequence[Tuple[str, nn.Parameter]],
+        old_params: Optional[Mapping[str, nn.Parameter]],
+    ) -> None:
+        if not old_optimizer.state:
+            return
+        old_lookup: Dict[str, nn.Parameter] = dict(old_params) if old_params is not None else {}
+        for name, param in param_sequence:
+            old_param = old_lookup.get(name)
+            if old_param is None and param in old_optimizer.state:
+                old_param = param
+            if old_param is None:
+                continue
+            old_state = old_optimizer.state.get(old_param)
+            if not isinstance(old_state, dict):
+                continue
+            target_state: Dict[str, object] = {}
+            for key, value in old_state.items():
+                if isinstance(value, torch.Tensor):
+                    target_state[key] = self._resize_optimizer_tensor(value, param.data)
+                else:
+                    target_state[key] = value
+            new_optimizer.state[param] = target_state
 
     # ------------------------------------------------------------------
     # Checkpoints
@@ -790,6 +869,8 @@ class ProtoLanguageModel(nn.Module):
         current = self.vocab.size()
         keep_mask = torch.ones(current, dtype=torch.bool, device=self.device)
         keep_mask[list(prune_ids)] = False
+        old_params: Dict[str, nn.Parameter] = dict(self.named_parameters())
+
         new_embed = self.embed.weight.data[keep_mask, :].clone()
         new_output_weight = self.output.weight.data[keep_mask, :].clone()
         new_output_bias = self.output.bias.data[keep_mask].clone()
@@ -808,7 +889,7 @@ class ProtoLanguageModel(nn.Module):
         self._resize_importance_tracker(self.vocab.size())
         self._embed_grad_importance = self._embed_grad_importance.to(self.device)
         self._embed_grad_importance = self._embed_grad_importance[keep_mask.cpu()].to(self.device)
-        self._reset_optimizer()
+        self._reset_optimizer(old_params=old_params)
         self._parameter_total = self._count_parameters()
         self._dedupe_events += len(prune_ids)
         self._emit_parameter_update()

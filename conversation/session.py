@@ -265,10 +265,15 @@ class ConversationSession:
                 seg_digest = content_digest(snippet)
                 if index.seen(seg_digest) and not allow_dup:
                     continue
+            training = False
             if self.config.learning_enabled:
                 self.proto_lm.training_step(snippet)
+                training = True
             self._record_memory(source, snippet)
-            last_metrics = self.runtime.run_step(self._build_state(snippet, speaker="assistant"))
+            runtime_state = self._build_state(snippet, speaker="assistant")
+            if training:
+                runtime_state["training_active"] = True
+            last_metrics = self.runtime.run_step(runtime_state)
             processed += 1
             if seg_digest is None:
                 seg_digest = content_digest(snippet)
@@ -443,7 +448,7 @@ class ConversationSession:
         self.memory_operator.execute(verb)
 
     def _build_state(self, text: str, speaker: str) -> Mapping[str, object]:
-        ids = self.proto_lm.encode(text)
+        ids = self.proto_lm.encode(text, mutate=False)
         logits = self._logits_from_ids(ids)
         token_cost = max(1.0, float(len(ids)))
         prompt_embedding = self._compute_embedding(text)

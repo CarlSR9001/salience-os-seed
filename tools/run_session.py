@@ -128,6 +128,7 @@ def training_worker(
                 runtime_state.setdefault("speaker", "corpus")
                 runtime_state.setdefault("context_snippet", segment[:160])
                 runtime_state.setdefault("segment_digest", digest)
+                runtime_state["training_active"] = True
                 metrics = session.runtime.run_step(runtime_state)
                 session._adaptive.track_runtime(metrics)
                 gating = session._adaptive.last_gating_summary
