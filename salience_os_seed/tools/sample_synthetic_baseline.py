@@ -1,4 +1,4 @@
-"""Sample text from the TinyStories checkpoint after loading it."""
+"""Sample text from the synthetic baseline checkpoint after loading it."""
 from pathlib import Path
 
 from salience_os_seed.conversation.session import (
@@ -8,7 +8,7 @@ from salience_os_seed.conversation.session import (
 )
 
 
-CHECKPOINT = Path("storage/proto_lm/tinystories.pt")
+CHECKPOINT = Path("storage/proto_lm/synthetic_baseline.pt")
 
 
 def main() -> None:
@@ -23,7 +23,7 @@ def main() -> None:
     session = ConversationSession(config=cfg)
     print(f"Loaded step: {session.proto_lm.step}")
     print(f"Vocab size: {session.proto_lm.vocab.size()}")
-    prompt = "Once upon a time"
+    prompt = "Hello, assistant!"
     sample = session.proto_lm.sample(prompt, max_tokens=80)
     print("Prompt:", prompt)
     print("Sample:")

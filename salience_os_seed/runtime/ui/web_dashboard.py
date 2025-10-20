@@ -1493,7 +1493,7 @@ def run_dashboard(
     host: str = "127.0.0.1",
     port: int = 8765,
     auto_save_path: Optional[str] = None,
-    checkpoint_path: Optional[str] = "storage/proto_lm/tinystories.pt",
+    checkpoint_path: Optional[str] = "storage/proto_lm/synthetic_baseline.pt",
     device: str = "auto",
     learning_enabled: bool = False,
     archive_checkpoint_on_start: bool = False,
@@ -1552,7 +1552,7 @@ def main() -> None:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--auto-save-path")
-    parser.add_argument("--checkpoint", default="storage/proto_lm/tinystories.pt")
+    parser.add_argument("--checkpoint", default="storage/proto_lm/synthetic_baseline.pt")
     parser.add_argument("--device", default="auto")
     parser.add_argument("--learn", action="store_true")
     parser.add_argument("--archive", action="store_true")

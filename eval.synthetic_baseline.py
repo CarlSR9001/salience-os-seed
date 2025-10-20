@@ -1,11 +1,11 @@
-"""Evaluate a TinyStories checkpoint without interrupting ongoing training.
+"""Evaluate the synthetic baseline checkpoint on tiny synthetic splits.
 
-Run with:
+Example usage::
 
-    python eval.tinystories.py --checkpoint storage/proto_lm/tinystories-001.pt
+    python eval.synthetic_baseline.py --checkpoint storage/proto_lm/synthetic_baseline.pt
 
-This script loads the specified checkpoint, runs perplexity and accuracy-style
-metrics on TinyStories validation/test splits, and prints qualitative samples.
+The script loads the checkpoint, computes lightweight metrics on the
+synthetic validation/test corpora, and emits qualitative conversational samples.
 """
 
 from __future__ import annotations
@@ -36,8 +36,8 @@ def _ensure_repo_on_path() -> None:
         sys.path.insert(0, parent_str)
 
 
-DEFAULT_VAL_PATH = Path("standard/TinyStories-valid.txt")
-DEFAULT_TEST_PATH = Path("standard/TinyStories-test.txt")
+DEFAULT_VAL_PATH = Path("data/local_benchmarks/synthetic_baseline_validation.txt")
+DEFAULT_TEST_PATH = Path("data/local_benchmarks/synthetic_baseline_test.txt")
 
 
 @dataclass
@@ -52,12 +52,12 @@ class EvalConfig:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Evaluate a TinyStories checkpoint")
-    parser.add_argument("--checkpoint", type=Path, help="Path to checkpoint .pt file (defaults to live tinystories.pt)")
+    parser = argparse.ArgumentParser(description="Evaluate a synthetic baseline checkpoint")
+    parser.add_argument("--checkpoint", type=Path, help="Path to checkpoint .pt file (defaults to live synthetic baseline)")
     parser.add_argument("--val", type=Path, default=DEFAULT_VAL_PATH, help="Validation split path")
     parser.add_argument("--test", type=Path, default=DEFAULT_TEST_PATH, help="Test split path (optional)")
-    parser.add_argument("--max-samples", type=int, default=2048, help="Maximum validation samples to evaluate")
-    parser.add_argument("--chunk-size", type=int, default=2048, help="Characters per evaluation chunk")
+    parser.add_argument("--max-samples", type=int, default=256, help="Maximum validation samples to evaluate")
+    parser.add_argument("--chunk-size", type=int, default=512, help="Characters per evaluation chunk")
     parser.add_argument("--temperature", type=float, default=0.8, help="Sampling temperature for qualitative outputs")
     parser.add_argument("--top-p", type=float, default=0.9, help="Top-p (nucleus) sampling cutoff")
     parser.add_argument("--top-k", type=int, default=50, help="Top-k sampling cutoff")
@@ -190,7 +190,7 @@ def main() -> None:
             raise FileNotFoundError(f"Checkpoint not found: {args.checkpoint}")
         target_ckpt = args.checkpoint
     else:
-        live_ckpt = Path("storage/proto_lm/tinystories.pt")
+        live_ckpt = Path("storage/proto_lm/synthetic_baseline.pt")
         if not live_ckpt.exists():
             raise FileNotFoundError(f"Live checkpoint not found: {live_ckpt}")
         if args.no_copy:
@@ -225,10 +225,10 @@ def main() -> None:
         print(json.dumps(metrics_test, indent=2))
 
     prompts = [
-        "Once upon a time,",
-        "In a tiny village,",
-        "The robot looked up and",
-        "The brave child knew that",
+        "User: Hello! Assistant:",
+        "User: What is 5 plus 6? Assistant:",
+        "User: Please summarize a sunny weather report. Assistant:",
+        "User: Activate the calculator tool for 2 * 3. Assistant:",
     ]
     default_stops = tuple(args.stop_sequences) if args.stop_sequences else ("\n\n",)
     completions = qualitative_samples(

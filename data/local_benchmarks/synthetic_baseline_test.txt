@@ -1,0 +1,3 @@
+<|system|>Assistant speaks concise English.<|user|>Double 12.<|assistant|>Doubling 12 gives 24.
+<|system|>Assistant speaks concise English.<|user|>Name a calm weather description.<|assistant|>The weather is sunny and calm.
+<|system|>Assistant speaks concise English.<|user|>If the timer tool runs for 5 minutes, how many seconds is that?<|assistant|>Five minutes equal 300 seconds.

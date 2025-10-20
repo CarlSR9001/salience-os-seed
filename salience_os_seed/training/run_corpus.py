@@ -1,6 +1,6 @@
 """Utility to run multi-epoch corpus training with the ProtoLanguageModel.
 
-This script streams a text corpus (TinyStories-scale) through the
+This script streams a compact text corpus through the
 ``ProtoLanguageModel`` in multiple epochs, applying patience-based early
 stopping when average epoch loss stops improving.
 """
@@ -23,7 +23,12 @@ from ..proto_lm.trainer import TrainingConfig
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run multi-epoch training on a text corpus")
-    parser.add_argument("--corpus", type=Path, required=True, help="Path to UTF-8 text corpus (e.g., standard/TinyStories-train.txt)")
+    parser.add_argument(
+        "--corpus",
+        type=Path,
+        required=True,
+        help="Path to UTF-8 text corpus (e.g., data/local_benchmarks/synthetic_baseline_corpus.txt)",
+    )
     parser.add_argument("--epochs", type=int, default=0, help="Maximum epochs to run (0 = infinite until early-stop)")
     parser.add_argument("--chunk-size", type=int, default=2048, help="Approximate character budget per training segment")
     parser.add_argument("--shuffle-buffer", type=int, default=0, help="Number of stories to buffer and shuffle before packing into segments (0 = no shuffling)")
@@ -31,7 +36,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--patience", type=int, default=3, help="Epochs without improvement before stopping (0 disables early stop)")
     parser.add_argument("--min-delta", type=float, default=0.1, help="Minimum improvement in mean loss to reset patience")
     parser.add_argument("--log-every", type=int, default=1000, help="Print progress every N training updates (0 disables)")
-    parser.add_argument("--checkpoint-path", type=Path, default=Path("storage/proto_lm/tinystories.pt"), help="File path for checkpoints")
+    parser.add_argument(
+        "--checkpoint-path",
+        type=Path,
+        default=Path("storage/proto_lm/synthetic_baseline.pt"),
+        help="File path for checkpoints",
+    )
     parser.add_argument("--checkpoint-interval", type=int, default=5000, help="Steps between checkpoint saves (0 disables periodic saves)")
     parser.add_argument("--resume", action="store_true", help="Resume from --checkpoint-path if it exists without archiving")
     parser.add_argument("--salience-filter", action="store_true", help="Enable the salience ingestion filter before training")
