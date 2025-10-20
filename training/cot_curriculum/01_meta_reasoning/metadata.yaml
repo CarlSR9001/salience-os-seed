@@ -1,0 +1,8 @@
+lesson: "Meta reasoning under uncertainty"
+targets:
+  - uncertainty acknowledgment
+  - probabilistic communication
+  - request for additional evidence
+difficulty: intermediate
+notes: |
+  Encourage explicit statements about data gaps, confidence intervals, and follow-up actions.

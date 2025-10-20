@@ -1,0 +1,8 @@
+lesson: "Verification-driven reasoning"
+targets:
+  - predict-then-check workflows
+  - contradiction detection
+  - result consistency audits
+difficulty: intermediate
+notes: |
+  Emphasize explicit verification steps, evidence logging, and response revision when checks fail.

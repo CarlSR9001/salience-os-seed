@@ -1,0 +1,8 @@
+lesson: "Foundations of decomposition"
+targets:
+  - breaking problems into subgoals
+  - arithmetic translation
+  - estimation hygiene
+difficulty: beginner
+notes: |
+  Emphasize explicit identification of sub-steps and carry the units across intermediate results.

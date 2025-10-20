@@ -1,0 +1,8 @@
+lesson: "Memory-aware reasoning"
+targets:
+  - contextual retrieval before answering
+  - fact synthesis across notes
+  - hypothesis formulation
+difficulty: intermediate
+notes: |
+  Encourage explicit referencing of stored facts and combining them into concise synthesized outputs.

@@ -1,0 +1,8 @@
+lesson: "Failure recovery and strategy switching"
+targets:
+  - confusion diagnosis
+  - strategy switching
+  - scope reduction
+difficulty: intermediate
+notes: |
+  Focus on recognising stalled reasoning, diagnosing blockers, and adapting plans without abandoning progress.

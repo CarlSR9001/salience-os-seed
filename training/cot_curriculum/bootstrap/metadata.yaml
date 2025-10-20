@@ -1,0 +1,11 @@
+lesson: "Bootstrap Agent Operations"
+targets:
+  - tool_usage
+  - sandbox_safety
+  - reflection_loop
+  - memory_update
+difficulty: beginner
+notes: |
+  Tool literacy primer for the SalienceOS seed runtime. Examples cover
+  locating tools, invoking them safely, validating results, and updating
+  todos/hypotheses based on tool output. Pair with bootstrap.jsonl.

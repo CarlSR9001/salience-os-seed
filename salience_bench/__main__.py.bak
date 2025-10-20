@@ -1,0 +1,83 @@
+from __future__ import annotations
+
+import argparse
+import json
+import pathlib
+from typing import Sequence
+
+from . import __version__
+
+
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Salience benchmark harness")
+    parser.add_argument("command", choices=["run", "list"], help="Harness command")
+    parser.add_argument(
+        "--benchmark",
+        "-b",
+        action="append",
+        help="Benchmark identifier (can be repeated). If omitted, run all supported benchmarks.",
+    )
+    parser.add_argument(
+        "--config",
+        type=pathlib.Path,
+        default=pathlib.Path("benchmarks/benchmarks_manifest.json"),
+        help="Path to benchmark manifest JSON.",
+    )
+    parser.add_argument(
+        "--output",
+        type=pathlib.Path,
+        default=pathlib.Path("results"),
+        help="Directory to write evaluation outputs.",
+    )
+    parser.add_argument(
+        "--seeds",
+        type=int,
+        default=5,
+        help="Number of random seeds to run (default 5 for compliance with protocol).",
+    )
+    parser.add_argument(
+        "--print-version",
+        action="store_true",
+        help="Print harness version and exit.",
+    )
+    return parser.parse_args(argv)
+
+
+def load_manifest(path: pathlib.Path) -> dict[str, object]:
+    with path.open("r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def list_benchmarks(manifest: dict[str, object]) -> None:
+    for name, meta in manifest.items():
+        summary = meta.get("notes") or meta.get("description") or ""
+        url = meta.get("url", "")
+        print(f"- {name}: {summary} {url}")
+
+
+def run_benchmarks(selected: Sequence[str] | None, manifest: dict[str, object], seeds: int, output: pathlib.Path) -> None:
+    output.mkdir(parents=True, exist_ok=True)
+    targets = selected or list(manifest.keys())
+    metadata = {"harness_version": __version__, "seeds": seeds, "benchmarks": targets}
+    with (output / "run_plan.json").open("w", encoding="utf-8") as handle:
+        json.dump(metadata, handle, indent=2, sort_keys=True)
+    print("Run plan written to", output / "run_plan.json")
+    print("Adapters not yet implemented. Use this skeleton to integrate per-benchmark runners.")
+
+
+def main(argv: Sequence[str] | None = None) -> None:
+    args = parse_args(argv)
+    if args.print_version:
+        print(__version__)
+        return
+    manifest = load_manifest(args.config)
+    if args.command == "list":
+        list_benchmarks(manifest)
+        return
+    if args.command == "run":
+        run_benchmarks(args.benchmark, manifest, seeds=args.seeds, output=args.output)
+        return
+
+
+if __name__ == "__main__":
+    main()
