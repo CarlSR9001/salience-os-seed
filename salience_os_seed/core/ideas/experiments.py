@@ -19,6 +19,24 @@ class SelfExperiment:
     results: Dict[str, float] = field(default_factory=dict)
     conclusion: Optional[str] = None
     baseline_verification: float = 0.0
+    parameter_metadata: Dict[str, str] = field(default_factory=dict)
+
+
+PARAMETER_ALIASES: Mapping[str, str] = {
+    "scheduler.threshold": "scheduler.min_budget_ratio",
+}
+
+
+PARAMETER_BUILDERS: Mapping[str, Callable[[float, float], float]] = {
+    "controller.lambda_cost": lambda uncertainty, _drag: 0.8 + 0.4 * uncertainty,
+    "scheduler.min_budget_ratio": lambda _uncertainty, drag: 0.5 + 0.3 * (1.0 - drag),
+}
+
+
+PARAMETER_LABELS: Mapping[str, str] = {
+    "controller.lambda_cost": "lambda_cost",
+    "scheduler.min_budget_ratio": "scheduler",
+}
 
 
 class ExperimentDispatcher:
@@ -48,25 +66,34 @@ class ExperimentDispatcher:
         self.active.append(experiment)
         return experiment
 
+    def _canonical_parameter(self, parameter: str) -> str:
+        return PARAMETER_ALIASES.get(parameter, parameter)
+
     def _build_experiment(self, uncertainty: float, drag: float) -> SelfExperiment:
         overrides: Dict[str, float] = {}
+        metadata: Dict[str, str] = {}
         name_parts: List[str] = []
-        if "controller.lambda_cost" in self.allowed_parameters:
-            overrides["controller.lambda_cost"] = 0.8 + 0.4 * uncertainty
-            name_parts.append("lambda_cost")
-        if "scheduler.threshold" in self.allowed_parameters:
-            overrides["scheduler.threshold"] = 0.5 + 0.3 * (1.0 - drag)
-            name_parts.append("scheduler")
+        for parameter in self.allowed_parameters:
+            canonical = self._canonical_parameter(parameter)
+            metadata[parameter] = canonical
+            builder = PARAMETER_BUILDERS.get(canonical)
+            if not builder or canonical in overrides:
+                continue
+            overrides[canonical] = builder(uncertainty, drag)
+            name_parts.append(PARAMETER_LABELS.get(canonical, canonical))
         if not overrides:
-            key = self.allowed_parameters[0]
-            overrides[key] = 0.5
-            name_parts.append(key)
+            fallback_alias = self.allowed_parameters[0]
+            fallback = self._canonical_parameter(fallback_alias)
+            metadata.setdefault(fallback_alias, fallback)
+            overrides[fallback] = 0.5
+            name_parts.append(PARAMETER_LABELS.get(fallback, fallback))
         name = "exp::" + ":".join(name_parts)
         return SelfExperiment(
             name=name,
             hypothesis="Adjust parameters to improve verification success",
             parameter_overrides=overrides,
             duration_steps=16,
+            parameter_metadata=metadata,
         )
 
     def run_experiment(
