@@ -352,7 +352,12 @@ class SalienceRuntime:
                 raise TypeError("`hidden_states` must be a torch.Tensor")
             layer_states = state.get("layer_states") or self.layer_states
             hyper_deltas = state.get("hyper_deltas")
-            output, new_layer_states = self.sass(hidden_states, layer_states, hyper_deltas)
+            output, new_layer_states = self.sass(
+                hidden_states,
+                layer_states,
+                hyper_deltas,
+                detach_states=True,
+            )
             sequence_id = int(state.get("sequence_id", 0))
             if operator is ControllerOperator.SASS_WITH_JUMP:
                 trigger = bool(
