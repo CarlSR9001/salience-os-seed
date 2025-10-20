@@ -15,6 +15,18 @@ from ..core.meta import MetaStateConfig
 
 
 @dataclass(slots=True)
+class CalibrationConfig:
+    """Settings for runtime sensor calibration probes."""
+
+    enabled: bool = False
+    history_window: int = 160
+    min_samples: int = 12
+    ridge_penalty: float = 5e-3
+    probe_weight: float = 0.35
+    heuristic_regularization: float = 0.4
+
+
+@dataclass(slots=True)
 class ReflectionConfig:
     """Settings controlling runtime reflection facilities."""
 
@@ -63,6 +75,7 @@ class RuntimeConfig:
     sass: SASSConfig = field(default_factory=SASSConfig)
     idea_factory: IdeaFactoryConfig = field(default_factory=IdeaFactoryConfig)
     scheduler: SchedulerConfig = field(default_factory=SchedulerConfig)
+    calibration: CalibrationConfig = field(default_factory=CalibrationConfig)
     reflection: ReflectionConfig = field(default_factory=ReflectionConfig)
     maintenance: MaintenanceConfig = field(default_factory=MaintenanceConfig)
     experiments: ExperimentConfig = field(default_factory=ExperimentConfig)
@@ -71,6 +84,7 @@ class RuntimeConfig:
 
 __all__ = [
     "RuntimeConfig",
+    "CalibrationConfig",
     "ReflectionConfig",
     "MaintenanceConfig",
     "ExperimentConfig",

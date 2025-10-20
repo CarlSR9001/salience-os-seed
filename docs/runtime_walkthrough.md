@@ -96,4 +96,5 @@ thresholds and policy hyperparameters.
 
 ## Configuration Summary
 - **Reflection**: Set `RuntimeConfig.reflection_workspace_root` to enable read-only filesystem introspection for REFLECT actions and RLM tools. Tune `reflection_scratchpad_tokens` and `reflection_history_capacity` to control scratchpad budgets.
+- **Sensor calibration**: Enable adaptive sensor probes with `RuntimeConfig.calibration.enabled`. Tune `history_window`/`min_samples` to control how much runtime data each probe ingests, adjust `ridge_penalty` for smoother fits, and balance probe influence with `probe_weight` + `heuristic_regularization` (higher values keep weights closer to the original heuristics).
 - **RLM launch**: Instantiate a `ModelClient`, `SalienceRuntime`, and `WorkspaceViewer`, then call `RLM.run(task)` with a tailored `RLMPolicy` for long-context investigations.
