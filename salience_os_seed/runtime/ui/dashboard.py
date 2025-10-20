@@ -21,7 +21,7 @@ except Exception:  # pragma: no cover - optional dependency
     RICH_AVAILABLE = False
 
 from ..driver import DriverSnapshot, RuntimeDriver
-from ..orchestrator import RuntimeConfig
+from ..config import RuntimeConfig
 
 
 @dataclass

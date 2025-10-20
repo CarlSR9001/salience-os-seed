@@ -16,8 +16,19 @@ from typing import Iterable, Mapping, MutableSequence, Sequence
 
 from .tables import MemoryRecord, StructuredMemory
 
-ARCHIVE_ROOT = Path("storage/memory_archive")
-ARCHIVE_ROOT.mkdir(parents=True, exist_ok=True)
+
+@dataclass(slots=True)
+class ArchiveStore:
+    """Lazy archive path manager used by maintenance routines."""
+
+    root: Path = Path("storage/memory_archive")
+
+    def ensure(self) -> None:
+        self.root.mkdir(parents=True, exist_ok=True)
+
+    def open(self, name: str):
+        self.ensure()
+        return (self.root / name).open("a", encoding="utf-8")
 
 
 @dataclass
@@ -58,14 +69,20 @@ def should_cleanup(
     return False
 
 
-def archive_low_roi_facts(memory: StructuredMemory, threshold: float = 0.1) -> int:
+def archive_low_roi_facts(
+    memory: StructuredMemory,
+    threshold: float = 0.1,
+    *,
+    store: ArchiveStore | None = None,
+) -> int:
     """Move low-ROI facts into cold storage and remove them from hot tables."""
 
     archived = 0
     to_remove: MutableSequence[int] = []
     timestamp = int(time.time())
-    archive_path = ARCHIVE_ROOT / f"facts_{timestamp}.jsonl"
-    with archive_path.open("a", encoding="utf-8") as handle:
+    archive_store = store or ArchiveStore()
+    filename = f"facts_{timestamp}.jsonl"
+    with archive_store.open(filename) as handle:
         for record in list(memory.facts.iter()):
             score = float(record.metadata.get("roi", record.score))
             if score < threshold:

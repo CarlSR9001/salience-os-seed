@@ -1,6 +1,7 @@
 """Structured external memory package for SalienceOS Seed."""
 
 from .maintenance import (
+    ArchiveStore,
     MaintenanceThresholds,
     archive_low_roi_facts,
     merge_redundant_entries,
@@ -14,6 +15,7 @@ __all__ = [
     "MemoryRecord",
     "MemoryTable",
     "StructuredMemory",
+    "ArchiveStore",
     "MaintenanceThresholds",
     "archive_low_roi_facts",
     "merge_redundant_entries",

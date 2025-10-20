@@ -7,13 +7,14 @@ import time
 
 from ..driver import RuntimeDriver
 from ..orchestrator import RuntimeConfig
-from ..state_gen import GENERATOR_REGISTRY
+from ..state_gen import create_default_generators
 from .dashboard import Dashboard, DashboardConfig
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="SalienceRuntime interactive console")
-    parser.add_argument("--generator", choices=list(GENERATOR_REGISTRY.keys()), default="baseline")
+    default_generators = create_default_generators()
+    parser.add_argument("--generator", choices=list(default_generators.keys()), default="baseline")
     parser.add_argument("--auto", action="store_true", help="Enable auto-run loop on start")
     parser.add_argument("--interval", type=float, default=0.75, help="Auto refresh interval")
     parser.add_argument("--rich", action="store_true", help="Force rich rendering (if installed)")

@@ -4,14 +4,11 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Deque, Dict, Iterable, Mapping, MutableMapping, Optional
+from typing import Callable, Deque, Dict, Iterable, Mapping, MutableMapping, Optional
 
-from ..core.meta import MetaState
-from ..core.memory import StructuredMemory
-from ..core.operators import MemoryOperator
-from ..core.sensors import SensorBank
-from .orchestrator import RuntimeConfig, RuntimeMetrics, SalienceRuntime
-from .state_gen import GENERATOR_REGISTRY, StateGenerator
+from .config import RuntimeConfig
+from .orchestrator import RuntimeMetrics, SalienceRuntime
+from .state_gen import StateGenerator, create_default_generators
 
 
 @dataclass
@@ -32,11 +29,16 @@ class RuntimeDriver:
 
     config: RuntimeConfig = field(default_factory=RuntimeConfig)
     history_size: int = 32
+    generator_factory: Callable[[], MutableMapping[str, StateGenerator]] = field(
+        default=create_default_generators
+    )
 
     def __post_init__(self) -> None:
         self.runtime = SalienceRuntime(self.config)
-        self.generators: MutableMapping[str, StateGenerator] = GENERATOR_REGISTRY
-        self.generator_key = "baseline"
+        self.generators: MutableMapping[str, StateGenerator] = self.generator_factory()
+        if not self.generators:
+            raise ValueError("At least one state generator must be registered")
+        self.generator_key = next(iter(self.generators.keys()))
         self.state_generator = self.generators[self.generator_key]
         self.history: Deque[RuntimeMetrics] = deque(maxlen=self.history_size)
 
@@ -49,6 +51,9 @@ class RuntimeDriver:
 
     def available_generators(self) -> Mapping[str, str]:
         return {key: gen.describe() for key, gen in self.generators.items()}
+
+    def register_generator(self, key: str, generator: StateGenerator) -> None:
+        self.generators[key] = generator
 
     def step(self) -> DriverSnapshot:
         state = self.state_generator.next_state()
@@ -69,8 +74,13 @@ class RuntimeDriver:
         self.history.clear()
 
     def inject_memory(self, verb: Mapping[str, object]) -> None:
-        memory_operator = MemoryOperator(self.runtime.memory)
-        memory_operator.execute(verb)
+        self.runtime.memory_operator.execute(verb)
+
+    def mcp_resources(self) -> Mapping[str, object]:
+        return {
+            "memory": self.runtime.mcp_memory,
+            "introspection": self.runtime.mcp_introspection,
+        }
 
     def snapshot(self) -> DriverSnapshot:
         if not self.history:
