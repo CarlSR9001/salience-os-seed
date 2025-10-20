@@ -5,7 +5,7 @@ This document defines the evaluation harness and protocol for benchmarking MONIK
 
 ## Goals
 - Provide reproducible 5-seed runs with 95% confidence intervals.
-- Support both local development (≤7B models on RTX 5060) and cloud-scale evaluations (≥13B on A100/H100/GH200).
+- Support both local development (≤7B models on RTX 4060/5060-class GPUs) and cloud-scale evaluations (≥13B on A100/H100/GH200).
 - Emit machine-readable results suitable for comparisons and model cards.
 
 ## Harness Architecture
@@ -80,4 +80,5 @@ class BenchmarkAdapter(Protocol):
 ## Timeline
 1. Finalize harness scaffolding and manifests. *(in progress)*
 2. Implement adapters iteratively with local fixtures.
-3. Integrate with cloud scheduler and record sample runs.<|vq_8129|>4. Release pip package and GitHub repo alongside documentation.
+3. Integrate with cloud scheduler and record sample runs.
+4. Release pip package and GitHub repo alongside documentation.
