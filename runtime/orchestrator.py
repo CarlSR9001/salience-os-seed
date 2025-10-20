@@ -348,7 +348,7 @@ class SalienceRuntime:
             self.introspection.attach_verification(outcome)
             return outcome.passed
 
-        if operator in {ControllerOperator.SASS, ControllerOperator.SASS_WITH_JUMP}:
+        elif operator in {ControllerOperator.SASS, ControllerOperator.SASS_WITH_JUMP}:
             hidden_states = state.get("hidden_states")
             if hidden_states is None:
                 if self.hidden_states is None:
@@ -397,6 +397,35 @@ class SalienceRuntime:
             self.bandit_trainer.update(action, reward)
             return None
 
+        elif operator is ControllerOperator.MEMORY_OP:
+            verb = state.get("memory_verb")
+            applied = False
+            if isinstance(verb, Mapping):
+                result = self.memory_operator.execute(verb)
+                applied = bool(result.applied)
+            reward = (1.0 if applied else -0.2) - 0.1 * float(salience.get("drag", 0.0))
+            self.bandit_trainer.update(action, reward)
+            return None
+
+        elif operator is ControllerOperator.TOOL:
+            tools = state.get("tools")
+            tool_name = state.get("tool_name") or action.patch.name.lower()
+            invoked = False
+            if isinstance(tools, Mapping):
+                tool_fn = tools.get(tool_name)
+                if callable(tool_fn):
+                    tool_fn(state)
+                    invoked = True
+            reward = 0.5 if invoked else -0.1
+            self.bandit_trainer.update(action, reward)
+            return None
+
+        elif operator is ControllerOperator.REFLECT:
+            self._perform_reflection(action, state, salience)
+            return None
+
+        return None
+
     def adjust_controller_dynamics(self, updates: Mapping[str, float], *, max_step: float = 0.1) -> Dict[str, float]:
         applied = self.introspection.adjust_controller_dynamics(updates, max_step=max_step)
         if applied:
@@ -410,30 +439,6 @@ class SalienceRuntime:
 
     def dynamics_history(self) -> Sequence[Dict[str, object]]:
         return list(self._dynamics_history)
-
-        if operator is ControllerOperator.MEMORY_OP:
-            verb = state.get("memory_verb")
-            if isinstance(verb, Mapping):
-                result = self.memory_operator.execute(verb)
-                reward = (1.0 if result.applied else -0.2) - 0.1 * float(salience.get("drag", 0.0))
-                self.bandit_trainer.update(action, reward)
-            return None
-
-        if operator is ControllerOperator.TOOL:
-            tools = state.get("tools")
-            tool_name = state.get("tool_name") or action.patch.name.lower()
-            if isinstance(tools, Mapping) and tool_name in tools:
-                tool_fn = tools[tool_name]
-                if callable(tool_fn):
-                    tool_fn(state)
-                    self.bandit_trainer.update(action, 0.5)
-            return None
-
-        if operator is ControllerOperator.REFLECT:
-            self._perform_reflection(action, state, salience)
-            return None
-
-        return None
 
     def _maybe_generate_ideas(self, salience: Mapping[str, float], meta_snapshot: Mapping[str, float]) -> int:
         if not self.idea_generator.should_generate(salience):
