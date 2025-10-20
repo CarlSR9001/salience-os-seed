@@ -19,9 +19,11 @@ from ...training.cot_curriculum.loader import iter_examples
 from ...telemetry import (
     BUS,
     ParameterEvent,
+    SpatialEvent,
     TelemetryEvent,
     render_ingestion_event,
     render_parameter_event,
+    render_spatial_event,
     render_training_event,
 )
 
@@ -212,6 +214,32 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       font-size: 0.95rem;
       color: #f6fffc;
     }
+    .spatial-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    #spatialCanvas {
+      width: 100%;
+      height: 220px;
+      border: 1px solid rgba(124, 255, 246, 0.4);
+      border-radius: 8px;
+      background: radial-gradient(circle at 40% 30%, rgba(40, 90, 160, 0.4), rgba(5, 10, 32, 0.9));
+      box-shadow: inset 0 0 20px rgba(30, 120, 180, 0.45);
+    }
+    #spatialAscii {
+      margin: 0;
+      padding: 10px;
+      background: rgba(4, 18, 46, 0.85);
+      border: 1px solid rgba(120, 255, 220, 0.25);
+      border-radius: 6px;
+      max-height: 160px;
+      overflow-y: auto;
+    }
+    #spatialSummary {
+      font-size: 0.78rem;
+      color: #9dfcff;
+    }
     table {
       width: 100%;
       border-collapse: collapse;
@@ -356,6 +384,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     .badge.param { background: #7fffd0; }
     .badge.train { background: #ffdb6e; }
     .badge.ingest { background: #7ecbff; }
+    .badge.spatial { background: #c592ff; color: #0c0120; }
   </style>
 </head>
 <body>
@@ -382,6 +411,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <section class=\"panel scroll\">
       <h2>Scratchpad</h2>
       <div id=\"scratchpad\"></div>
+    </section>
+    <section class=\"panel spatial-panel\">
+      <h2>4D Reasoning Map</h2>
+      <canvas id=\"spatialCanvas\" width=\"360\" height=\"220\"></canvas>
+      <pre class=\"mono\" id=\"spatialAscii\"></pre>
+      <div id=\"spatialSummary\"></div>
     </section>
     <section class=\"panel scroll\">
       <h2>Todos</h2>
@@ -486,6 +521,93 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       container.innerHTML = `<pre class="mono">${entries.join('\\n')}</pre>`;
     }
 
+    function renderSpatial(payload) {
+      const canvas = document.getElementById('spatialCanvas');
+      const ascii = document.getElementById('spatialAscii');
+      const summary = document.getElementById('spatialSummary');
+      if (!canvas || !canvas.getContext) {
+        return;
+      }
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = 'rgba(6, 12, 30, 0.9)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      if (!payload) {
+        ascii.textContent = '<empty>';
+        summary.textContent = 'no path';
+        return;
+      }
+
+      ascii.textContent = payload.ascii || '<empty>';
+      summary.textContent = payload.summary || 'no path';
+
+      const points = Array.isArray(payload.points) ? payload.points : [];
+      if (!points.length) {
+        ctx.fillStyle = 'rgba(120, 150, 210, 0.18)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        return;
+      }
+
+      const projections = points.map((point) => point.projection || { u: 0, v: 0 });
+      const us = projections.map((p) => p.u);
+      const vs = projections.map((p) => p.v);
+      const minU = Math.min(...us);
+      const maxU = Math.max(...us);
+      const minV = Math.min(...vs);
+      const maxV = Math.max(...vs);
+      const spanU = maxU - minU || 1;
+      const spanV = maxV - minV || 1;
+
+      ctx.strokeStyle = 'rgba(95, 220, 255, 0.25)';
+      ctx.lineWidth = 1;
+      const gridSteps = 6;
+      for (let i = 0; i <= gridSteps; i++) {
+        const x = (i / gridSteps) * canvas.width;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+      }
+      for (let i = 0; i <= gridSteps; i++) {
+        const y = (i / gridSteps) * canvas.height;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+      }
+
+      ctx.beginPath();
+      projections.forEach((proj, index) => {
+        const x = ((proj.u - minU) / spanU) * canvas.width;
+        const y = canvas.height - ((proj.v - minV) / spanV) * canvas.height;
+        if (index === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      });
+      ctx.strokeStyle = 'rgba(126, 255, 230, 0.85)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      projections.forEach((proj, index) => {
+        const point = points[index];
+        const x = ((proj.u - minU) / spanU) * canvas.width;
+        const y = canvas.height - ((proj.v - minV) / spanV) * canvas.height;
+        const w = Number.parseFloat(point.w ?? 0);
+        const hue = w >= 0 ? 160 : 280;
+        const intensity = Math.min(1, Math.abs(w));
+        ctx.fillStyle = `hsla(${hue}, 70%, ${50 + intensity * 20}%, 0.9)`;
+        ctx.beginPath();
+        ctx.arc(x, y, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(12, 20, 40, 0.9)';
+        ctx.font = '10px monospace';
+        ctx.fillText(String(index + 1), x + 8, y - 6);
+      });
+    }
+
     function renderTodos(container, todos) {
       if (!todos || todos.length === 0) {
         container.innerHTML = '<span class="error">No todos</span>';
@@ -547,6 +669,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         renderKeyValue(document.getElementById('decision'), data.decision);
         renderKeyValue(document.getElementById('status'), data.status);
         renderList(document.getElementById('scratchpad'), data.scratchpad);
+        renderSpatial(data.spatial);
         renderTodos(document.getElementById('todos'), data.todos);
         renderTable(document.getElementById('maintenance'), data.maintenance);
         renderTable(document.getElementById('experiments'), data.experiments);
@@ -564,10 +687,44 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         for (const entry of telem.entries) {
           const div = document.createElement('div');
           div.className = 'telemetry-entry';
-          const badgeClass = entry.type === 'parameters/update' ? 'param' : entry.type === 'training/step' ? 'train' : 'ingest';
-          const badgeLabel = entry.type === 'parameters/update' ? 'params' : entry.type === 'training/step' ? 'train' : 'ingest';
+          let badgeClass = 'ingest';
+          let badgeLabel = 'event';
+          switch (entry.type) {
+            case 'parameters/update':
+              badgeClass = 'param';
+              badgeLabel = 'params';
+              break;
+            case 'training/step':
+              badgeClass = 'train';
+              badgeLabel = 'train';
+              break;
+            case 'ingestion/chunk':
+              badgeClass = 'ingest';
+              badgeLabel = 'ingest';
+              break;
+            case 'spatial/update':
+              badgeClass = 'spatial';
+              badgeLabel = '4D';
+              break;
+            default:
+              badgeClass = 'ingest';
+              badgeLabel = entry.type.split('/')[0] || 'event';
+              break;
+          }
           div.innerHTML = `<span class="badge ${badgeClass}">${badgeLabel}</span><pre>${entry.rendered}</pre>`;
           root.appendChild(div);
+          if (entry.type === 'spatial/update' && entry.payload) {
+            const payload = entry.payload;
+            if (payload.path && typeof payload.path === 'object') {
+              renderSpatial({
+                summary: payload.summary,
+                ascii: payload.ascii,
+                points: payload.path.points || [],
+              });
+            } else {
+              renderSpatial(payload);
+            }
+          }
         }
         if (wrapper) {
           wrapper.scrollTop = wrapper.scrollHeight;
@@ -766,6 +923,12 @@ class DashboardState:
                 "events": "<none>",
             },
             "scratchpad": ["<empty scratchpad>"],
+            "spatial": {
+                "summary": "no path",
+                "ascii": "<empty>",
+                "points": [],
+                "metadata": {},
+            },
             "todos": [{"id": "-", "text": "<empty>", "score": "0.00"}],
             "maintenance": [{"category": "<none>", "count": "0"}],
             "experiments": [{"name": "<none>", "conclusion": ""}],
@@ -848,6 +1011,38 @@ class DashboardState:
                     scratch_lines = ["<empty>"]
                 scratch_lines.append("\nSummary: " + scratchpad.summarize(max_traces=5))
                 payload["scratchpad"] = scratch_lines
+                spatial_payload = payload.setdefault(
+                    "spatial",
+                    {
+                        "summary": "no path",
+                        "ascii": "<empty>",
+                        "points": [],
+                        "metadata": {},
+                    },
+                )
+                latest_path = scratchpad.latest_four_d_path() if hasattr(scratchpad, "latest_four_d_path") else None
+                if latest_path:
+                    path_dict = latest_path.to_dict()
+                    spatial_payload.update(
+                        {
+                            "summary": latest_path.summary(),
+                            "ascii": latest_path.ascii_projection(),
+                            "points": path_dict.get("points", []),
+                            "centroid": path_dict.get("centroid", {}),
+                        }
+                    )
+                else:
+                    spatial_payload.update(
+                        {
+                            "summary": "no path",
+                            "ascii": "<empty>",
+                            "points": [],
+                            "centroid": {"x": 0.0, "y": 0.0, "z": 0.0, "w": 0.0},
+                        }
+                    )
+                if getattr(scratchpad, "trace_history", None):
+                    last_trace = scratchpad.trace_history[-1]
+                    spatial_payload["metadata"] = dict(getattr(last_trace, "metadata", {}))
 
             history_items = list(self._session.history)
             payload["history"] = [
@@ -864,6 +1059,8 @@ class DashboardState:
     def record_telemetry(self, event: TelemetryEvent) -> None:
         if isinstance(event, ParameterEvent):
             rendered = render_parameter_event(event)
+        elif isinstance(event, SpatialEvent):
+            rendered = render_spatial_event(event)
         elif event.type == "training/step":
             rendered = "\n".join(render_training_event(event))
         elif event.type == "ingestion/chunk":
@@ -874,6 +1071,7 @@ class DashboardState:
             "type": event.type,
             "rendered": rendered,
             "timestamp": time.time(),
+            "payload": event.payload,
         }
         with self._lock:
             self._telemetry.append(entry)

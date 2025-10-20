@@ -13,6 +13,9 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, Optional
 
+from ..core.spatial import FourDCoordinate, payload_to_coordinate
+from ..telemetry import BUS, SpatialEvent
+
 
 class WeightProvenance(str, Enum):
     CLONE = "clone"
@@ -30,6 +33,7 @@ class WeightSnapshot:
     created_at: float
     salience_scores: Dict[str, float]
     notes: Dict[str, Any] = field(default_factory=dict)
+    coordinate: Optional[FourDCoordinate] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -40,10 +44,20 @@ class WeightSnapshot:
             "created_at": self.created_at,
             "salience_scores": self.salience_scores,
             "notes": self.notes,
+            "coordinate": self.coordinate.to_dict() if self.coordinate else None,
         }
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "WeightSnapshot":
+        coord_payload = data.get("coordinate")
+        coord = None
+        if isinstance(coord_payload, dict):
+            coord = FourDCoordinate(
+                float(coord_payload.get("x", 0.0)),
+                float(coord_payload.get("y", 0.0)),
+                float(coord_payload.get("z", 0.0)),
+                float(coord_payload.get("w", 0.0)),
+            )
         return cls(
             weight_id=data["weight_id"],
             payload_hash=data.get("payload_hash", ""),
@@ -52,6 +66,7 @@ class WeightSnapshot:
             created_at=float(data.get("created_at", 0.0)),
             salience_scores=dict(data.get("salience_scores", {})),
             notes=dict(data.get("notes", {})),
+            coordinate=coord,
         )
 
 
@@ -85,9 +100,21 @@ class AdaptiveVault:
             created_at=time.time(),
             salience_scores=salience_scores.copy(),
             notes=notes.copy() if notes else {},
+            coordinate=payload_to_coordinate(payload),
         )
         self._ensure_capacity()
         self._weights[weight_id] = snapshot
+        if snapshot.coordinate:
+            BUS.publish(
+                SpatialEvent(
+                    payload={
+                        "space": "parameters",
+                        "weight_id": weight_id,
+                        "summary": f"salience={salience_scores.get('payoff', 0.0):.3f}",
+                        "coordinate": snapshot.coordinate.to_dict(),
+                    }
+                )
+            )
         return snapshot
 
     def promote(self, weight_id: str, *, note: str) -> None:

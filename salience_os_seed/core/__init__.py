@@ -1,6 +1,6 @@
 """Core cognitive primitives for Salience OS Seed."""
 
-from . import controller, ideas, memory, meta, operators, reflection, scheduler, sensors
+from . import controller, ideas, memory, meta, operators, reflection, scheduler, sensors, spatial
 
 __all__ = [
     "controller",
@@ -11,4 +11,5 @@ __all__ = [
     "reflection",
     "scheduler",
     "sensors",
+    "spatial",
 ]

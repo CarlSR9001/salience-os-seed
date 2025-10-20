@@ -8,6 +8,9 @@ from typing import Deque, Iterable, List, Mapping, MutableSequence, Optional, Se
 
 import numpy as np
 
+from ...telemetry import BUS, SpatialEvent
+from ..spatial import FourDPath, trace_to_path
+
 
 @dataclass
 class ScratchpadTrace:
@@ -18,6 +21,7 @@ class ScratchpadTrace:
     token_count: int
     embedding: np.ndarray
     metadata: Mapping[str, object] = field(default_factory=dict)
+    four_d_path: Optional[FourDPath] = None
 
     def summary(self, max_chars: int = 120) -> str:
         joined = " ".join(self.steps)
@@ -37,6 +41,7 @@ class Scratchpad:
         self.trace_history: List[ScratchpadTrace] = []
         self._current_tokens = 0
         self._token_history: Deque[int] = deque(maxlen=history_capacity)
+        self._last_path: Optional[FourDPath] = None
 
     # ---------------------------------------------------------------------
     # Trace lifecycle
@@ -64,12 +69,14 @@ class Scratchpad:
         steps = tuple(self.current_trace)
         token_count = self._current_tokens
         embedding = self._encode_trace(steps)
+        four_d_path = trace_to_path(steps)
         trace = ScratchpadTrace(
             steps=steps,
             outcome=bool(outcome),
             token_count=token_count,
             embedding=embedding,
             metadata=dict(metadata or {}),
+            four_d_path=four_d_path,
         )
         self.buffer.append(trace)
         self._token_history.append(token_count)
@@ -80,6 +87,19 @@ class Scratchpad:
         self.trace_history.append(trace)
         self.current_trace.clear()
         self._current_tokens = 0
+        self._last_path = four_d_path
+        if four_d_path and len(four_d_path.coordinates) > 0:
+            BUS.publish(
+                SpatialEvent(
+                    payload={
+                        "space": "reasoning",
+                        "summary": four_d_path.summary(),
+                        "path": four_d_path.to_dict(),
+                        "ascii": four_d_path.ascii_projection(),
+                        "metadata": dict(trace.metadata),
+                    }
+                )
+            )
         return trace
 
     def reset(self) -> None:
@@ -172,10 +192,19 @@ class Scratchpad:
     def import_traces(self, traces: Iterable[ScratchpadTrace]) -> None:
         """Restore traces from storage, respecting capacity."""
 
+        last_path: Optional[FourDPath] = None
         for trace in traces:
             self.buffer.append(trace)
             self._token_history.append(trace.token_count)
+            last_path = getattr(trace, "four_d_path", last_path)
         while len(self.buffer) > self.buffer.maxlen:
             self.buffer.popleft()
         while len(self._token_history) > self._token_history.maxlen:
             self._token_history.popleft()
+        if last_path is not None:
+            self._last_path = last_path
+
+    def latest_four_d_path(self) -> Optional[FourDPath]:
+        """Return the most recently committed four-dimensional reasoning path."""
+
+        return self._last_path
