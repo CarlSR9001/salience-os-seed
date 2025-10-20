@@ -48,7 +48,7 @@ class SensorReading:
 
 
 class MedianMADNormalizer:
-    """Robustly normalise scalar streams via median and MAD.
+    r"""Robustly normalise scalar streams via median and MAD.
 
     The normaliser maintains a fixed-length buffer per `domain` (logical key). For
     each new sample it computes:
