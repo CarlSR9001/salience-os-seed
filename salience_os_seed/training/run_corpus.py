@@ -206,7 +206,12 @@ def train_corpus(args: argparse.Namespace) -> None:
                         )
                     )
             if args.checkpoint_interval and model.step % args.checkpoint_interval == 0:
-                path = model.save_checkpoint(str(args.checkpoint_path))
+                path = model.save_checkpoint(
+                    str(args.checkpoint_path),
+                    reason="interval",
+                    metadata={"source": "run_corpus", "step": model.step},
+                    tags=["corpus"],
+                )
                 print(f"  ✔ checkpoint saved to {path}")
 
             meta_snapshot = session.runtime.meta_state.snapshot()
@@ -232,7 +237,12 @@ def train_corpus(args: argparse.Namespace) -> None:
                 elapsed=elapsed,
             )
         )
-        path = model.save_checkpoint(str(args.checkpoint_path))
+        path = model.save_checkpoint(
+            str(args.checkpoint_path),
+            reason="epoch",
+            metadata={"source": "run_corpus", "epoch": epoch_index},
+            tags=["corpus"],
+        )
         print(f"  ✔ checkpoint saved to {path}")
 
         stop, best_loss, stale_epochs = should_stop(losses, best_loss, args.min_delta, args.patience, stale_epochs)
@@ -240,7 +250,12 @@ def train_corpus(args: argparse.Namespace) -> None:
             print(f"Early stopping triggered after {epoch_index} epochs (best loss {best_loss:.4f}).")
             break
 
-    final_path = model.save_checkpoint(str(args.checkpoint_path))
+    final_path = model.save_checkpoint(
+        str(args.checkpoint_path),
+        reason="final",
+        metadata={"source": "run_corpus", "epochs": args.epochs},
+        tags=["corpus", "final"],
+    )
     total_steps = model.step
     print(f"Training complete after {total_steps} updates. Final checkpoint: {final_path}")
 

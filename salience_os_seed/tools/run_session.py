@@ -152,7 +152,12 @@ def training_worker(
                         )
                     )
                 if args.checkpoint_interval and global_step % args.checkpoint_interval == 0:
-                    checkpoint_path = session.proto_lm.save_checkpoint(str(args.checkpoint))
+                    checkpoint_path = session.proto_lm.save_checkpoint(
+                        str(args.checkpoint),
+                        reason="interval",
+                        metadata={"source": "run_session", "step": global_step},
+                        tags=["interactive"],
+                    )
                     print(f"  ✔ checkpoint saved to {checkpoint_path}")
                 meta_snapshot = session.runtime.meta_state.snapshot()
                 memory_snapshot = session.runtime.memory.as_runtime_mapping()
@@ -173,7 +178,12 @@ def training_worker(
                     rejected=rejected,
                 )
             )
-            checkpoint_path = session.proto_lm.save_checkpoint(str(args.checkpoint))
+            checkpoint_path = session.proto_lm.save_checkpoint(
+                str(args.checkpoint),
+                reason="epoch",
+                metadata={"source": "run_session", "epoch": epoch_index},
+                tags=["interactive"],
+            )
             print(f"  ✔ checkpoint saved to {checkpoint_path}")
         else:
             print("Epoch completed with no accepted segments.")
@@ -316,7 +326,12 @@ def main() -> None:
             dashboard_thread.join(timeout=5.0)
         if unsubscribe is not None:
             unsubscribe()
-        session.proto_lm.save_checkpoint(str(args.checkpoint))
+        session.proto_lm.save_checkpoint(
+            str(args.checkpoint),
+            reason="shutdown",
+            metadata={"source": "run_session"},
+            tags=["interactive", "shutdown"],
+        )
         print("Runner shutting down. Final checkpoint written.")
 
 

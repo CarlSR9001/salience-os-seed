@@ -20,6 +20,7 @@ class ParameterEvent(TelemetryEvent):
     """Telemetry event describing parameter updates."""
 
     type: str = "parameters/update"
+    kind: str = "structural"
 
 
 class TelemetryBus:
@@ -68,13 +69,21 @@ def colour_text(text: str, colour: str) -> str:
 
 def render_parameter_event(event: ParameterEvent) -> str:
     payload = event.payload
-    delta = int(payload.get("delta", 0))
-    colour = ANSI_GREEN if delta > 0 else ANSI_RED if delta < 0 else ANSI_BLUE
-    delta_str = f"{delta:+d}" if isinstance(delta, int) else str(delta)
-    coloured_delta = colour_text(delta_str, colour)
-    total = payload.get("total", "?")
     step = payload.get("step", "?")
-    return f"[telemetry] step={step} params={total} Δ={coloured_delta}"
+    total = payload.get("total", "?")
+    if event.kind == "gradient":
+        first_norm = payload.get("first_norm", payload.get("delta", 0.0))
+        colour = ANSI_GREEN if isinstance(first_norm, (float, int)) and float(first_norm) > 0 else ANSI_BLUE
+        norm_str = f"{float(first_norm):+.4f}" if isinstance(first_norm, (float, int)) else str(first_norm)
+        return f"[telemetry] step={step} grad_norm={colour_text(norm_str, colour)} params={total}"
+    delta = payload.get("delta", 0)
+    try:
+        delta_int = int(delta)
+    except (TypeError, ValueError):
+        delta_int = 0
+    colour = ANSI_GREEN if delta_int > 0 else ANSI_RED if delta_int < 0 else ANSI_BLUE
+    delta_str = f"{delta_int:+d}" if isinstance(delta_int, int) else str(delta)
+    return f"[telemetry] step={step} params={total} Δ={colour_text(delta_str, colour)}"
 
 
 def render_training_event(event: TelemetryEvent) -> Iterator[str]:
