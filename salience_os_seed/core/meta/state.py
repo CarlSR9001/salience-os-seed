@@ -101,10 +101,17 @@ class MetaState:
 
     def _gru_step(self, x: np.ndarray, h_prev: np.ndarray) -> np.ndarray:
         w = self.gru_weights
-        z = self._sigmoid(x @ w["xz"] + h_prev @ w["hz"] + w["bz"])
-        r = self._sigmoid(x @ w["xr"] + h_prev @ w["hr"] + w["br"])
-        h_candidate = np.tanh(x @ w["xh"] + (r * h_prev) @ w["hh"] + w["bh"])
-        h_new = (1 - z) * h_prev + z * h_candidate
+        z = self._sigmoid(
+            self._vec_mat_mul(x, w["xz"]) + self._vec_mat_mul(h_prev, w["hz"]) + w["bz"]
+        )
+        r = self._sigmoid(
+            self._vec_mat_mul(x, w["xr"]) + self._vec_mat_mul(h_prev, w["hr"]) + w["br"]
+        )
+        gated_prev = self._elementwise_mul(r, h_prev)
+        h_candidate = np.tanh(
+            self._vec_mat_mul(x, w["xh"]) + self._vec_mat_mul(gated_prev, w["hh"]) + w["bh"]
+        )
+        h_new = self._elementwise_mix(h_prev, h_candidate, z)
         return h_new.astype(np.float32)
 
     def _apply_constraints(self) -> None:
@@ -145,3 +152,30 @@ class MetaState:
     def _sigmoid(x: np.ndarray) -> np.ndarray:
         clipped = np.clip(x, -60.0, 60.0)
         return 1.0 / (1.0 + np.exp(-clipped))
+
+    @staticmethod
+    def _vec_mat_mul(vec: np.ndarray, mat: np.ndarray) -> np.ndarray:
+        vector = list(vec)
+        rows = mat.tolist()
+        if not rows:
+            return np.zeros_like(vec)
+        cols = len(rows[0])
+        result = []
+        for col in range(cols):
+            total = 0.0
+            for row_idx, row in enumerate(rows):
+                if row_idx < len(vector):
+                    total += vector[row_idx] * row[col]
+            result.append(total)
+        return np.asarray(result, dtype=np.float32)
+
+    @staticmethod
+    def _elementwise_mul(left: np.ndarray, right: np.ndarray) -> np.ndarray:
+        return np.asarray([float(a) * float(b) for a, b in zip(left, right)], dtype=np.float32)
+
+    @staticmethod
+    def _elementwise_mix(base: np.ndarray, candidate: np.ndarray, gate: np.ndarray) -> np.ndarray:
+        blended = []
+        for b, c, g in zip(base, candidate, gate):
+            blended.append((1.0 - float(g)) * float(b) + float(g) * float(c))
+        return np.asarray(blended, dtype=np.float32)

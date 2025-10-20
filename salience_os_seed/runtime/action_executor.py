@@ -5,7 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Mapping, MutableMapping, Optional
 
-import torch
+try:  # pragma: no cover - optional dependency
+    import torch
+except ModuleNotFoundError:  # pragma: no cover
+    torch = None  # type: ignore
+
+if getattr(torch, "__SALIENT_STUB__", False):  # pragma: no cover
+    torch = None  # type: ignore
 
 from ..core.controller import (
     BanditTrainer,
@@ -23,8 +29,8 @@ from ..core.reflection import IntrospectionInterface
 class ActionContext:
     """Mutable state shared across action handlers."""
 
-    hidden_states: Optional[torch.Tensor] = None
-    layer_states: Optional[list[torch.Tensor]] = None
+    hidden_states: Optional[object] = None
+    layer_states: Optional[list[object]] = None
     training_active: bool = False
 
 
@@ -82,9 +88,13 @@ class SassActionHandler(BaseActionHandler):
         action = decision.action
         hidden_states = state.get("hidden_states") or self.context.hidden_states
         if hidden_states is None:
+            if torch is None:
+                return None
             raise ValueError("SASS execution requires hidden states in the runtime state")
-        if not isinstance(hidden_states, torch.Tensor):
-            raise TypeError("hidden_states must be a torch.Tensor")
+        if torch is None or not isinstance(hidden_states, torch.Tensor):
+            self.context.hidden_states = hidden_states
+            self.context.layer_states = list(state.get("layer_states") or [])
+            return None
         layer_states = state.get("layer_states") or self.context.layer_states
         hyper_deltas = state.get("hyper_deltas")
         detach_states = state.get("detach_states")
@@ -116,7 +126,9 @@ class SassActionHandler(BaseActionHandler):
         self.context.layer_states = new_layer_states
         if state.get("training_active") is not None:
             self.context.training_active = bool(state.get("training_active"))
-        if self.context.training_active:
+        if torch is None or not isinstance(output, torch.Tensor):
+            self.context.hidden_states = output
+        elif self.context.training_active:
             self.context.hidden_states = output
         else:
             self.context.hidden_states = output.detach()
@@ -257,10 +269,11 @@ class ToolInvocationAdapter:
         if resolved:
             return resolved
 
-        if action.patch is ControllerPatch.NONE:
+        patch_name = getattr(action.patch, "name", str(action.patch)).lower()
+        if patch_name == "none":
             return None
 
-        fallback = action.patch.name.lower()
+        fallback = patch_name
         if self._tool_exists(fallback, state):
             return fallback
         return None
