@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Mapping, MutableMapping, Optional
+from typing import Mapping, MutableMapping, Optional, TYPE_CHECKING
 
 try:  # pragma: no cover - optional dependency
     import torch
@@ -23,6 +23,9 @@ from ..core.controller import (
 from ..core.memory import StructuredMemory
 from ..core.operators import GraphReasoner, MemoryOperator, SparseJumpTeleporter, VerifierSuite, SASSCore
 from ..core.reflection import IntrospectionInterface
+
+if TYPE_CHECKING:  # pragma: no cover - type checking only
+    from .reflection import ReflectionManager
 
 
 @dataclass(slots=True)

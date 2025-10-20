@@ -14,7 +14,7 @@ import random
 from pathlib import Path
 from statistics import fmean, median
 from time import perf_counter
-from typing import Iterable, Iterator, List, Optional
+from typing import Iterable, Iterator, List
 
 from ..conversation.filters import IngestionThresholds
 from ..conversation.session import ConversationConfig, ConversationSession, IngestionConfig

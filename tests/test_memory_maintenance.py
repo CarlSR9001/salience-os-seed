@@ -1,8 +1,6 @@
 import json
 from pathlib import Path
 
-import pytest
-
 from salience_os_seed.core.memory import StructuredMemory
 from salience_os_seed.core.memory.maintenance import (
     ArchiveStore,

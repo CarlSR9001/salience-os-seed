@@ -14,22 +14,26 @@ import argparse
 import json
 import math
 import shutil
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, Iterator, List
-import sys
-
-
-REPO_DIR = Path(__file__).resolve().parent
-PARENT = REPO_DIR.parent
-if str(PARENT) not in sys.path:
-    sys.path.insert(0, str(PARENT))
+from typing import Iterable, Iterator, TYPE_CHECKING
 
 import torch
 
-from salience_os_seed.conversation.session import ConversationConfig, ConversationSession
-from salience_os_seed.proto_lm.trainer import TrainingConfig
+
+if TYPE_CHECKING:  # pragma: no cover - import-time conveniences only
+    from salience_os_seed.conversation.session import ConversationSession
+
+
+def _ensure_repo_on_path() -> None:
+    """Ensure the repository root is importable when running as a script."""
+
+    parent = Path(__file__).resolve().parent.parent
+    parent_str = str(parent)
+    if parent_str not in sys.path:
+        sys.path.insert(0, parent_str)
 
 
 DEFAULT_VAL_PATH = Path("standard/TinyStories-valid.txt")
@@ -42,7 +46,7 @@ class EvalConfig:
     device: str = "auto"
     max_samples: int = 2048
     chunk_size: int = 2048
-    prompt_prefixes: List[str] | None = None
+    prompt_prefixes: list[str] | None = None
     temperature: float = 0.8
     max_gen_tokens: int = 120
 
@@ -76,6 +80,10 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_session(ckpt: Path, device: str) -> ConversationSession:
+    _ensure_repo_on_path()
+    from salience_os_seed.conversation.session import ConversationConfig, ConversationSession
+    from salience_os_seed.proto_lm.trainer import TrainingConfig
+
     training = TrainingConfig()
     training.checkpoint_path = str(ckpt)
     training.device = device
@@ -88,7 +96,7 @@ def load_session(ckpt: Path, device: str) -> ConversationSession:
 
 def iter_chunks(path: Path, chunk_size: int, max_samples: int) -> Iterator[str]:
     count = 0
-    buffer: List[str] = []
+    buffer: list[str] = []
     length = 0
     with path.open("r", encoding="utf-8") as handle:
         for line in handle:
@@ -109,9 +117,15 @@ def iter_chunks(path: Path, chunk_size: int, max_samples: int) -> Iterator[str]:
 
 
 @torch.no_grad()
-def compute_metrics(session: ConversationSession, corpus: Path, *, chunk_size: int, max_samples: int) -> dict[str, float]:
+def compute_metrics(
+    session: ConversationSession,
+    corpus: Path,
+    *,
+    chunk_size: int,
+    max_samples: int,
+) -> dict[str, float]:
     model = session.proto_lm
-    losses: List[float] = []
+    losses: list[float] = []
     total_tokens = 0
     correct_next = 0
     total_next = 0

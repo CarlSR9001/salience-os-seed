@@ -9,7 +9,7 @@ in pure Python with standard library data structures to stay lightweight.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable, Dict, Iterable, Iterator, List, Optional, Sequence
+from typing import Callable, Dict, Iterator, List, Optional, Sequence
 
 
 @dataclass(frozen=True)

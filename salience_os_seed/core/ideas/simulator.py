@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, List, Mapping, Sequence
+from typing import Mapping, Sequence
 
 import numpy as np
 
@@ -31,12 +31,12 @@ class IdeaSimulator:
         proposals: Sequence[IdeaProposal],
         meta_snapshot: Mapping[str, float],
         salience: Mapping[str, float],
-    ) -> List[SimulationResult]:
+    ) -> list[SimulationResult]:
         difficulty = float(meta_snapshot.get("difficulty", 1.0))
         confidence = float(meta_snapshot.get("confidence", 0.0))
         drag = float(salience.get("drag", 0.0))
         uncertainty = float(salience.get("uncertainty", 0.0))
-        results: List[SimulationResult] = []
+        results: list[SimulationResult] = []
         for proposal in proposals:
             gain = self._estimate_gain(proposal, difficulty, uncertainty)
             cost = self._estimate_cost(proposal, drag, confidence)

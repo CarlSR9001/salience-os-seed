@@ -6,7 +6,7 @@ import shutil
 import threading
 import time
 from dataclasses import dataclass
-from typing import Iterable, Optional
+from typing import Optional
 
 try:
     from rich.columns import Columns

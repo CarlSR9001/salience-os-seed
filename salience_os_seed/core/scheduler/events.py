@@ -16,7 +16,7 @@ incoming salience readings and determine which events are active.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Mapping, MutableMapping
+from typing import Dict, Iterable, List, Mapping
 
 
 @dataclass(frozen=True)

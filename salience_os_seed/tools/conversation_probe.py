@@ -4,14 +4,18 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
-from salience_os_seed.conversation.session import ConversationConfig, ConversationSession
+def _ensure_repo_on_path() -> None:
+    root = Path(__file__).resolve().parents[2]
+    root_str = str(root)
+    if root_str not in sys.path:
+        sys.path.insert(0, root_str)
 
 
 def main() -> None:
+    _ensure_repo_on_path()
+    from salience_os_seed.conversation.session import ConversationConfig, ConversationSession
+
     config = ConversationConfig(learning_enabled=False)
     session = ConversationSession(config=config)
 

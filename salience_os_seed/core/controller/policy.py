@@ -16,9 +16,9 @@ Key behaviours implemented:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import logging
-from typing import Dict, Iterable, Mapping, MutableMapping, Optional, Sequence, Tuple
+from typing import Dict, Mapping, MutableMapping, Optional, Sequence, Tuple
 
 import numpy as np
 

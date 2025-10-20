@@ -5,7 +5,7 @@ from __future__ import annotations
 import abc
 from typing import Iterable, Optional
 
-from .types import LLMResponse, Prompt, ToolInvocation
+from .types import LLMResponse, Prompt
 
 
 class ModelClient(abc.ABC):

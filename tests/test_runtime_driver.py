@@ -1,7 +1,5 @@
 import math
 
-import pytest
-
 from salience_os_seed.runtime.driver import RuntimeDriver
 from salience_os_seed.runtime.state_gen import BaselineGenerator, create_default_generators
 

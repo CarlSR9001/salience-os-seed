@@ -7,7 +7,6 @@ import statistics
 import sys
 import types
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -353,13 +352,13 @@ _install_torch_stub()
 _install_operator_stubs()
 _install_meta_stubs()
 
-from salience_os_seed.core.controller import (
+from salience_os_seed.core.controller import (  # noqa: E402
     ControllerAction,
     ControllerDecision,
     ControllerOperator,
     ControllerPatch,
 )
-from salience_os_seed.runtime.orchestrator import SalienceRuntime
+from salience_os_seed.runtime.orchestrator import SalienceRuntime  # noqa: E402
 
 
 DEFAULT_SALIENCE = {

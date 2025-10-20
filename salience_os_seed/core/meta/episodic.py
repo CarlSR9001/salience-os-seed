@@ -7,7 +7,7 @@ import math
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, List, Mapping, Optional, Sequence
+from typing import List, Mapping, Optional, Sequence
 
 
 @dataclass

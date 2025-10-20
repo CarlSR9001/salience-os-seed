@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Callable, Dict, Mapping, Tuple
-
-from .memory_ops import MemoryOperator
 from .scratchpad_verifier import evaluate_scratchpad_trace
 
 

@@ -9,7 +9,7 @@ the sequence hidden state as a low-rank residual.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, Mapping, MutableMapping, Sequence, Tuple
+from typing import Mapping, Sequence, Tuple
 
 import torch
 import torch.nn as nn

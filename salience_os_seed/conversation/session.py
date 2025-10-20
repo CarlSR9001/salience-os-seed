@@ -12,7 +12,6 @@ from typing import Callable, Deque, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 
-from ..core.memory import StructuredMemory
 from ..core.operators import MemoryOperator
 from ..runtime.orchestrator import RuntimeConfig, RuntimeMetrics, SalienceRuntime
 from ..ingestion.reader import CorpusReader

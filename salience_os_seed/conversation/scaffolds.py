@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Dict, Iterable, List, Mapping
+from typing import Dict, List, Mapping
 
 _DEFAULT_SCAFFOLDS: Mapping[str, List[str]] = {
     "greet": ["Hello! How can I assist you today?"],
