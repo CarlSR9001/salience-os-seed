@@ -153,6 +153,7 @@ class SalienceRuntime:
         self.step_index = 0
         self.layer_states: Optional[list[torch.Tensor]] = None
         self.hidden_states: Optional[torch.Tensor] = None
+        self.training_active: bool = False
         self.workspace_viewer = (
             WorkspaceViewer(self.config.reflection_workspace_root)
             if self.config.reflection_workspace_root
@@ -176,6 +177,11 @@ class SalienceRuntime:
             if self.config.episodic_store_path:
                 episodic_path = Path(self.config.episodic_store_path).expanduser()
         self.episodic_store = EpisodicStore(episodic_path) if self.config.episodic_enabled else None
+
+    def set_training_active(self, active: bool) -> None:
+        """Toggle whether the runtime should preserve autograd history between steps."""
+
+        self.training_active = bool(active)
 
     def run_step(
         self,
@@ -352,6 +358,8 @@ class SalienceRuntime:
                 raise TypeError("`hidden_states` must be a torch.Tensor")
             layer_states = state.get("layer_states") or self.layer_states
             hyper_deltas = state.get("hyper_deltas")
+            if "training_active" in state:
+                self.training_active = bool(state["training_active"])
             output, new_layer_states = self.sass(hidden_states, layer_states, hyper_deltas)
             sequence_id = int(state.get("sequence_id", 0))
             if operator is ControllerOperator.SASS_WITH_JUMP:
@@ -371,7 +379,10 @@ class SalienceRuntime:
                         entity_hints=state.get("entity_hints", ()),
                     )
             self.layer_states = new_layer_states
-            self.hidden_states = output.detach()
+            if self.training_active:
+                self.hidden_states = output
+            else:
+                self.hidden_states = output.detach()
             reward = float(salience.get("progress", 0.0)) - self.config.controller.lambda_cost * float(salience.get("cost", 0.0))
             self.bandit_trainer.update(action, reward)
             return None
