@@ -4,7 +4,7 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from proto_lm.trainer import ProtoLanguageModel, TrainingConfig
+from salience_os_seed.proto_lm.trainer import ProtoLanguageModel, TrainingConfig
 
 
 def _snapshot_optimizer_state(optimizer: torch.optim.Optimizer) -> dict[int, dict[str, object]]:

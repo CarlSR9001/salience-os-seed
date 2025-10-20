@@ -3,7 +3,7 @@ import pytest
 pytest.importorskip("torch")
 import torch
 
-from core.operators.sass import SASSConfig, SASSCore
+from salience_os_seed.core.operators.sass import SASSConfig, SASSCore
 
 
 def _build_core() -> SASSCore:
