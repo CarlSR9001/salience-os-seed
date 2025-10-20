@@ -18,9 +18,9 @@
   - Exposes protocol `StateGenerator` with `next_state()` and `describe()`.
 
 - **`runtime/ui/dashboard.py`** – UI rendering layer using a simple reactive loop:
-  - Renders sections: headline (meta report), sensors table, controller action, scheduler events, memory stats, idea queue.
-  - Accepts keyboard commands (`[enter]` = single step, `a` = auto-run toggle, `m` = mutate memory, `q` = quit).
-  - Uses `rich` if installed; falls back to plain text formatting otherwise.
+  - Renders sections: headline (meta report + generator details), controller decision, runtime status with trend sparklines, scratchpad, salience channels, history timeline, todos, maintenance/experiments, command legend, generator roster, and rolling status messages.
+  - Accepts keyboard commands (`[enter]` = single step, `a` = auto-run toggle, `m` = mutate memory, `s` = cycle generator, `g <key>` = jump to generator, `r` = reset runtime, `h` = help, `q` = quit).
+  - Uses `rich` if installed; falls back to structured plain text formatting otherwise (shared command surface + summaries).
 
 - **`runtime/ui/cli.py`** – Entry point executed via `python -m salience_os_seed.runtime.ui.cli`.
   - Parses CLI args (`--generator`, `--auto`, `--steps`, `--rich` override).
@@ -38,10 +38,12 @@ Commands mutate driver/generator/runtime state
 
 ## Command Surface
 - `enter`: single step.
-- `space`: toggle auto-run (stream updates until paused).
-- `m`: cycle a structured memory verb (fact/hypothesis/todo injection).
-- `s`: switch state generator profile.
-- `v`: force verification (sets high KEY + low cost in next state).
+- `a`: toggle auto-run (stream updates until paused).
+- `m`: inject a todo into structured memory.
+- `s`: cycle state generator profile.
+- `g <key>`: jump directly to a specific generator.
+- `r`: reset the runtime loop and history.
+- `h` / `?`: surface the command palette in the message feed.
 - `q`: exit.
 
 ## Testing Plan
