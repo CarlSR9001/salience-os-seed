@@ -443,10 +443,7 @@ class ConversationSession:
         self.memory_operator.execute(verb)
 
     def _build_state(self, text: str, speaker: str) -> Mapping[str, object]:
-        try:
-            ids = self.proto_lm.encode(text, mutate=False)
-        except KeyError:
-            ids = self.proto_lm.encode(text, mutate=True)
+        ids = self.proto_lm.encode(text, mutate=False)
         logits = self._logits_from_ids(ids)
         token_cost = max(1.0, float(len(ids)))
         prompt_embedding = self._compute_embedding(text)

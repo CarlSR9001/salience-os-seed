@@ -172,7 +172,30 @@ class ProtoLanguageModel(nn.Module):
 
     def encode(self, text: str, *, mutate: bool = True) -> List[int]:
         if not mutate:
-            ids = self.vocab.encode_ids_readonly(text)
+            try:
+                ids = self.vocab.encode_ids_readonly(text)
+            except KeyError:
+                fallback_id = self.vocab.token_to_id.get("?")
+                if fallback_id is None:
+                    raise
+
+                ids = []
+                for token in self.vocab.encode(text):
+                    token_id = self.vocab.token_to_id.get(token)
+                    if token_id is not None:
+                        ids.append(token_id)
+                        continue
+
+                    if len(token) > 1:
+                        for symbol in token:
+                            symbol_id = self.vocab.token_to_id.get(symbol)
+                            if symbol_id is not None:
+                                ids.append(symbol_id)
+                            else:
+                                ids.append(fallback_id)
+                        continue
+
+                    ids.append(fallback_id)
             if self.eos_token_id is None and self.eos_token in self.vocab.token_to_id:
                 self.eos_token_id = self.vocab.token_to_id[self.eos_token]
             return ids
