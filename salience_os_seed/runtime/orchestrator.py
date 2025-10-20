@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Mapping, Optional, Sequence
+from typing import Deque, Dict, Mapping, Optional, Sequence
+
+import numpy as np
 
 from ..core.controller import (
     BanditTrainer,
@@ -33,6 +36,7 @@ from ..core.reflection import (
     Scratchpad,
     WorkspaceViewer,
 )
+from ..telemetry import BUS, TelemetryEvent
 
 from .action_executor import (
     ActionContext,
@@ -193,6 +197,10 @@ class SalienceRuntime:
         self._verification_history: list[int] = []
         self._verification_rate = 0.0
         self._dynamics_history: list[Dict[str, object]] = []
+        self._salience_history: Dict[str, Deque[float]] = {}
+        self._salience_history_window = 128
+        self._salience_histogram_bins = 12
+        self._last_auction_results: Dict[str, float] = {}
 
         episodic_path = None
         if self.config.episodic.enabled:
@@ -245,6 +253,7 @@ class SalienceRuntime:
         self.introspection.attach_salience(salience_map)
 
         self._prepare_auction_bids(salience_map, meta_snapshot)
+        previous_cooldown = self.controller.state.cooldown_remaining
         decision = self._choose_with_defaults(salience_map, meta_snapshot)
         should_run = self.scheduler.should_fire(
             salience_map,
@@ -278,11 +287,12 @@ class SalienceRuntime:
         )
         episode_id = self._record_episode(salience_map, decision, verification_passed)
         yearning_snapshot = self.introspection.get_yearning_state(refresh=True)
+        meta_after = self.meta_state.snapshot()
 
         metrics = RuntimeMetrics(
             step=self.step_index,
             decision=decision,
-            meta_report=render_self_report(self.meta_state.snapshot()),
+            meta_report=render_self_report(meta_after),
             verification_passed=verification_passed,
             budget_left=self.budget_left,
             scheduler_snapshot=self.scheduler.snapshot(),
@@ -292,6 +302,15 @@ class SalienceRuntime:
             experiment_reports=experiment_reports,
             episode_recorded=episode_id,
             salience_raw={reading.name: reading.raw for reading in salience_vector.readings},
+        )
+        self._record_salience_history(salience_vector)
+        self._publish_salience_histogram(metrics.step, salience_vector)
+        self._publish_controller_trace(
+            metrics,
+            meta_before=meta_snapshot,
+            meta_after=meta_after,
+            previous_cooldown=previous_cooldown,
+            executed=should_run,
         )
         return metrics
 
@@ -321,6 +340,142 @@ class SalienceRuntime:
         accepted = self.idea_dispatcher.dispatch(simulations, meta_snapshot)
         return len(accepted)
 
+    def _record_salience_history(self, salience_vector) -> None:
+        for reading in salience_vector.readings:
+            history = self._salience_history.get(reading.name)
+            if history is None or history.maxlen != self._salience_history_window:
+                history = deque(maxlen=self._salience_history_window)
+                self._salience_history[reading.name] = history
+            history.append(float(reading.normalised))
+
+    def _publish_salience_histogram(self, step: int, salience_vector) -> None:
+        hist_payload: Dict[str, Dict[str, object]] = {}
+        for reading in salience_vector.readings:
+            history = self._salience_history.get(reading.name)
+            if not history:
+                continue
+            snapshot = self._build_histogram_snapshot(history)
+            if not snapshot:
+                continue
+            entry: Dict[str, object] = dict(snapshot)
+            entry["latest"] = float(reading.normalised)
+            entry["raw"] = float(reading.raw)
+            if reading.metadata:
+                entry["metadata"] = self._serialise_mapping(reading.metadata)
+            hist_payload[reading.name] = entry
+        if not hist_payload:
+            return
+        BUS.publish(
+            TelemetryEvent(
+                type="runtime/salience_histogram",
+                payload={
+                    "step": int(step),
+                    "histograms": hist_payload,
+                },
+            )
+        )
+
+    def _build_histogram_snapshot(self, history: Deque[float]) -> Dict[str, object]:
+        if not history:
+            return {}
+        arr = np.fromiter(history, dtype=np.float32)
+        if arr.size == 0:
+            return {}
+        counts, edges = np.histogram(arr, bins=self._salience_histogram_bins)
+        bins = [
+            {
+                "lower": float(edges[idx]),
+                "upper": float(edges[idx + 1]),
+                "count": int(count),
+            }
+            for idx, count in enumerate(counts)
+        ]
+        return {
+            "samples": int(arr.size),
+            "mean": float(np.mean(arr)),
+            "stdev": float(np.std(arr)),
+            "min": float(np.min(arr)),
+            "max": float(np.max(arr)),
+            "bins": bins,
+        }
+
+    def _publish_controller_trace(
+        self,
+        metrics: RuntimeMetrics,
+        *,
+        meta_before: Mapping[str, float],
+        meta_after: Mapping[str, float],
+        previous_cooldown: int,
+        executed: bool,
+    ) -> None:
+        score_components = getattr(self.controller, "_last_score_components", {})
+        score_trace = {
+            self.controller._action_key(action): {
+                "score": float(score),
+                "rationale": rationale,
+            }
+            for action, (score, rationale) in score_components.items()
+        }
+        bids_sorted = sorted(self._last_auction_results.items(), key=lambda item: item[1], reverse=True)
+        payload = {
+            "step": int(metrics.step),
+            "decision": {
+                "action": self._action_payload(metrics.decision.action),
+                "score": float(metrics.decision.score),
+                "hysteresis_delta": float(metrics.decision.hysteresis_delta),
+                "cooldown": {
+                    "previous": int(previous_cooldown),
+                    "current": int(metrics.decision.cooldown_steps),
+                },
+            },
+            "executed": bool(executed),
+            "verification_passed": metrics.verification_passed,
+            "budget_left": float(metrics.budget_left),
+            "salience": {name: float(value) for name, value in metrics.decision.salience_mapping.items()},
+            "score_trace": score_trace,
+            "auction": [
+                {"action": action_key, "score": float(score)}
+                for action_key, score in bids_sorted[:8]
+            ],
+            "meta": {
+                "before": self._serialise_mapping(meta_before),
+                "after": self._serialise_mapping(meta_after),
+            },
+        }
+        BUS.publish(
+            TelemetryEvent(
+                type="runtime/controller_trace",
+                payload=payload,
+            )
+        )
+
+    @staticmethod
+    def _action_payload(action: ControllerAction) -> Dict[str, object]:
+        return {
+            "operator": action.operator.name,
+            "cot_depth": int(action.cot_depth),
+            "patch": action.patch.name,
+        }
+
+    @staticmethod
+    def _serialise_mapping(mapping: Mapping[str, object]) -> Dict[str, object]:
+        serialised: Dict[str, object] = {}
+        for key, value in mapping.items():
+            serialised[key] = SalienceRuntime._serialise_value(value)
+        return serialised
+
+    @staticmethod
+    def _serialise_value(value: object) -> object:
+        if isinstance(value, bool) or value is None:
+            return value
+        if isinstance(value, np.floating):
+            return float(value)
+        if isinstance(value, np.integer):
+            return int(value)
+        if isinstance(value, (float, int)):
+            return value
+        return value
+
     def _prepare_auction_bids(self, salience: Mapping[str, float], meta_snapshot: Mapping[str, float]) -> None:
         self.auction.clear()
         uncertainty = float(salience.get("uncertainty", 0.0))
@@ -343,7 +498,12 @@ class SalienceRuntime:
             expected_gain = max(0.0, operator_bias + depth_bonus) * budget_factor
             expected_cost = self.config.controller.lambda_cost * cost * (1.0 - 0.2 * confidence)
             self.auction.submit(AuctionBid(action=action, expected_gain=expected_gain, expected_cost=expected_cost))
-        for action, score in self.auction.resolve().items():
+        resolved = self.auction.resolve()
+        self._last_auction_results = {
+            self.controller._action_key(action): float(score)
+            for action, score in resolved.items()
+        }
+        for action, score in resolved.items():
             self.controller.register_auction_bid(action, score)
         self.auction.clear()
 
