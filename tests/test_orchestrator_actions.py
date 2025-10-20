@@ -18,7 +18,7 @@ def _install_package_alias() -> None:
     if "salience_os_seed" in sys.modules:
         return
     module = types.ModuleType("salience_os_seed")
-    module.__path__ = [str(Path(__file__).resolve().parents[1])]
+    module.__path__ = [str(Path(__file__).resolve().parents[1] / "salience_os_seed")]
     sys.modules["salience_os_seed"] = module
 
 
@@ -38,6 +38,10 @@ def _install_numpy_stub() -> None:
 
         def __getitem__(self, index):
             return self._data[index]
+
+        @property
+        def size(self):  # pragma: no cover - compatibility shim
+            return len(self._data)
 
         def __setitem__(self, index, value):
             self._data[index] = float(value)
@@ -86,6 +90,8 @@ def _install_numpy_stub() -> None:
     numpy_stub.ndarray = _SimpleArray
     numpy_stub.float32 = float
     numpy_stub.float64 = float
+    numpy_stub.floating = float
+    numpy_stub.integer = int
 
     def _as_array(data):
         if isinstance(data, _SimpleArray):
@@ -112,6 +118,35 @@ def _install_numpy_stub() -> None:
     numpy_stub.abs = lambda value: _SimpleArray(abs(x) for x in value) if isinstance(value, _SimpleArray) else abs(value)
     numpy_stub.tanh = math.tanh
 
+    def _std(seq):
+        values = list(seq)
+        if not values:
+            return 0.0
+        mean = sum(values) / len(values)
+        variance = sum((value - mean) ** 2 for value in values) / len(values)
+        return math.sqrt(variance)
+
+    def _histogram(seq, bins=10, range_=None):
+        values = list(seq)
+        if not values:
+            return _SimpleArray([0] * bins), _SimpleArray([0.0] * (bins + 1))
+        if range_ is None:
+            min_value = min(values)
+            max_value = max(values)
+        else:
+            min_value, max_value = map(float, range_)
+        if math.isclose(max_value, min_value):
+            max_value = min_value + 1.0
+        width = (max_value - min_value) / bins
+        edges = [min_value + idx * width for idx in range(bins + 1)]
+        counts = [0] * bins
+        for value in values:
+            idx = int((value - min_value) / width)
+            if idx >= bins:
+                idx = bins - 1
+            counts[idx] += 1
+        return _SimpleArray(counts), _SimpleArray(edges)
+
     def _clip(value, min_value, max_value):
         if isinstance(value, _SimpleArray):
             return _SimpleArray(min(max(x, min_value), max_value) for x in value)
@@ -119,6 +154,10 @@ def _install_numpy_stub() -> None:
 
     numpy_stub.clip = _clip
     numpy_stub.dot = lambda a, b: sum(x * y for x, y in zip(a, b))
+    numpy_stub.std = _std
+    numpy_stub.min = lambda seq: min(seq) if seq else 0.0
+    numpy_stub.max = lambda seq: max(seq) if seq else 0.0
+    numpy_stub.histogram = _histogram
     numpy_stub.linalg = types.SimpleNamespace(norm=lambda arr: math.sqrt(sum(x * x for x in arr)))
 
     class _DummyRandom:
@@ -427,3 +466,22 @@ def test_reflect_operator_commits_trace_and_trains(monkeypatch: pytest.MonkeyPat
     assert len(runtime.scratchpad.trace_history) == 1
     bucket = _bandit_bucket(runtime, decision.action)
     assert bucket.get("count", 0.0) >= 1.0
+
+
+def test_patched_decision_updates_controller_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    runtime, _, _ = _configure_runtime(monkeypatch, ControllerOperator.SASS)
+    executed: list[ControllerOperator] = []
+
+    def fake_execute(self, decision, state, salience):  # pragma: no cover - deterministic stub
+        executed.append(decision.action.operator)
+        return None
+
+    monkeypatch.setattr(type(runtime.action_executor), "execute", fake_execute)
+
+    metrics = runtime.run_step({"token_cost": 0.0})
+
+    assert metrics.decision.action.operator is ControllerOperator.REFLECT
+    assert executed == [ControllerOperator.REFLECT]
+    assert runtime.controller.state.last_action == metrics.decision.action
+    assert runtime.controller.state.last_score == metrics.decision.score
+    assert runtime.controller.state.cooldown_remaining == metrics.decision.cooldown_steps
