@@ -129,7 +129,11 @@ class SalienceRuntime:
         )
 
         self.action_context = ActionContext()
-        self.tool_adapter = ToolInvocationAdapter()
+        self.runtime_tools: Dict[str, object] = {}
+        self.tool_adapter = ToolInvocationAdapter(
+            runtime_tools=self.runtime_tools,
+            operator_tool_map=self._default_tool_map(),
+        )
         lambda_cost = self.config.controller.lambda_cost
         self.action_executor = ActionExecutor(
             verify_handler=VerifyActionHandler(
@@ -198,6 +202,15 @@ class SalienceRuntime:
 
         self.mcp_memory = MemoryResource(self.memory_operator)
         self.mcp_introspection = IntrospectionResource(self.introspection)
+
+    def _default_tool_map(self) -> Mapping[ControllerOperator, Mapping[ControllerPatch, str]]:
+        return {
+            ControllerOperator.TOOL: {
+                ControllerPatch.MATH: "math",
+                ControllerPatch.RETRIEVAL: "retrieval",
+                ControllerPatch.PLAN: "plan",
+            }
+        }
 
     def set_training_active(self, active: bool) -> None:
         """Toggle whether the runtime should preserve autograd history between steps."""
