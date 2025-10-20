@@ -1,0 +1,41 @@
+{
+    "GRIND": {
+        "source": "Vellum GRIND (request access)",
+        "url": "https://www.vellum.ai/llm-leaderboard",
+        "notes": "Run via Vellum’s hosted harness; mirror prompts and scoring locally where possible.",
+        "checksum": null
+    },
+    "AIME_2024": {
+        "url": "https://huggingface.co/datasets/math-ai/aime24",
+        "license": "see dataset card",
+        "checksum": null
+    },
+    "GPQA": {
+        "url": "https://huggingface.co/datasets/Idavidrein/gpqa",
+        "paper": "https://arxiv.org/abs/2311.12022",
+        "license": "MIT (dataset repo)",
+        "checksum": null
+    },
+    "SWE_bench": {
+        "url": "https://github.com/SWE-bench/SWE-bench",
+        "leaderboard": "https://www.swebench.com/",
+        "verified_subset": "https://openai.com/index/introducing-swe-bench-verified/",
+        "checksum": null
+    },
+    "MATH_500": {
+        "url": "https://huggingface.co/datasets/HuggingFaceH4/MATH-500",
+        "origin": "subset of Hendrycks MATH (per dataset card)",
+        "checksum": null
+    },
+    "BFCL": {
+        "url": "https://gorilla.cs.berkeley.edu/leaderboard.html",
+        "blog": "https://gorilla.cs.berkeley.edu/blogs/8_berkeley_function_calling_leaderboard.html",
+        "checksum": null
+    },
+    "Aider_Polyglot": {
+        "url": "https://github.com/Aider-AI/polyglot-benchmark",
+        "leaderboard": "https://aider.chat/docs/leaderboards/",
+        "notes": "225 Exercism problems across 6 languages",
+        "checksum": null
+    }
+}
