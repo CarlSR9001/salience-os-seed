@@ -16,9 +16,57 @@ import abc
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Deque, Dict, Iterable, Mapping, MutableMapping, Optional
+from typing import Deque, Dict, Iterable, Mapping, MutableMapping, Optional, Tuple
 
 import numpy as np
+
+try:  # pragma: no cover - optional acceleration
+    from numba import njit  # type: ignore
+except ModuleNotFoundError:  # pragma: no cover - optional dependency
+    njit = None  # type: ignore
+
+
+if njit is not None:  # pragma: no cover - exercised indirectly
+
+    @njit(cache=True)
+    def _median_mad_numba(values: np.ndarray) -> tuple[float, float]:  # type: ignore[misc]
+        sorted_vals = np.sort(values)
+        n = sorted_vals.size
+        mid = n // 2
+        if n % 2 == 0:
+            median = 0.5 * (sorted_vals[mid - 1] + sorted_vals[mid])
+        else:
+            median = sorted_vals[mid]
+
+        deviations = np.abs(values - median)
+        sorted_dev = np.sort(deviations)
+        n_dev = sorted_dev.size
+        mid_dev = n_dev // 2
+        if n_dev % 2 == 0:
+            mad = 0.5 * (sorted_dev[mid_dev - 1] + sorted_dev[mid_dev])
+        else:
+            mad = sorted_dev[mid_dev]
+        return float(median), float(mad)
+
+
+else:  # pragma: no cover - deterministic fallback
+
+    def _median_mad_numba(values: np.ndarray) -> tuple[float, float]:
+        raise RuntimeError("Numba is not available")
+
+
+def _median_and_mad(values: np.ndarray) -> tuple[float, float]:
+    """Compute median and MAD, preferring the compiled helper when available."""
+
+    if njit is not None and values.size:
+        try:
+            return _median_mad_numba(values)
+        except Exception:  # pragma: no cover - fall back if numba errors
+            pass
+
+    median = float(np.median(values))
+    mad = float(np.median(np.abs(values - median)))
+    return median, mad
 
 
 @dataclass(frozen=True)
@@ -71,6 +119,7 @@ class MedianMADNormalizer:
         self._window = window
         self._epsilon = epsilon
         self._buffers: MutableMapping[str, Deque[float]] = {}
+        self._stats_cache: MutableMapping[str, tuple[float, float]] = {}
 
     def _get_buffer(self, domain: str) -> Deque[float]:
         if domain not in self._buffers:
@@ -91,9 +140,9 @@ class MedianMADNormalizer:
         buffer = self._get_buffer(domain)
         buffer.append(float(value))
         arr = np.fromiter(buffer, dtype=np.float64)
-        median = float(np.median(arr))
-        mad = float(np.median(np.abs(arr - median)))
+        median, mad = _median_and_mad(arr)
         denom = mad if mad > self._epsilon else self._epsilon
+        self._stats_cache[domain] = (median, mad)
         return (float(value) - median) / denom
 
     def snapshot_statistics(self) -> Dict[str, Dict[str, float]]:
@@ -103,9 +152,12 @@ class MedianMADNormalizer:
         for domain, buffer in self._buffers.items():
             if not buffer:
                 continue
-            arr = np.fromiter(buffer, dtype=np.float64)
-            median = float(np.median(arr))
-            mad = float(np.median(np.abs(arr - median)))
+            if domain in self._stats_cache:
+                median, mad = self._stats_cache[domain]
+            else:
+                arr = np.fromiter(buffer, dtype=np.float64)
+                median, mad = _median_and_mad(arr)
+                self._stats_cache[domain] = (median, mad)
             stats[domain] = {"median": median, "mad": mad}
         return stats
 
